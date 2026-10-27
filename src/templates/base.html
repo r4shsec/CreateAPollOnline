@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="myemerald">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}My App{% endblock %}</title>
+
+  <!-- daisyUI components -->
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css" />
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@5/themes.css" rel="stylesheet" type="text/css" />
+  <!-- Custom Theme -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/theme.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="min-h-screen bg-base-200">
+    {% block content %}
+    {% endblock %}
+</body>
+</html>
