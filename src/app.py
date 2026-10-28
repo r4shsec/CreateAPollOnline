@@ -7,6 +7,7 @@ import uuid
 import sqlite3
 import secrets
 from haikunator import Haikunator
+from flask_socketio import SocketIO, emit
 from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template, request, redirect, make_response, url_for, jsonify, g
 from jwt.exceptions import InvalidSignatureError, ExpiredSignatureError, InvalidTokenError
@@ -15,6 +16,10 @@ app = Flask(
     __name__,
     template_folder='templates',
     static_folder='static'
+)
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins="*"
 )
 haikunator = Haikunator()
 
@@ -39,6 +44,10 @@ class Flask_JWT_Manager:
     def validate_JWT(token:str) -> dict:
         decoded = jwt.decode(token, secret, algorithms=["HS256"])
         if decoded:
+            if decoded.get('expired') < str(datetime.now(tz=timezone.utc)):
+                return {
+                    "error": "Expired Token"
+                }
             return decoded
         else:
             return {
@@ -54,8 +63,9 @@ def check_request_token():
     if not token:
         g.generate_new_token = True
     else:
-        validation_result = Flask_JWT_Manager.validate_JWT(token)
-        if validation_result.get('error') == 'Invalid Token':
+        try:
+            jwt.decode(token, secret, algorithms=["HS256"])
+        except:
             g.clear_token = True
 
 @app.after_request
@@ -72,9 +82,17 @@ def handle_response_cookies(response):
 def index():
     return render_template('index.html'), 200
 
+@app.route('/create', methods=['GET', 'POST'])
+def create_poll():
+    if request.method == 'GET':
+        return render_template('poll_create.html'), 200
+
 # Application Programming Interface (API)
 
 if __name__ == '__main__':
-    app.run(
+    socketio.run(
+        app,
+        host='0.0.0.0',
+        port=5000,
         debug=True
     )

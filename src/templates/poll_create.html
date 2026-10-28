@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Create a Poll{% endblock %}
+
+{% block content %}
+<div class="hero py-10 lg:py-16 bg-base-200">
+    <div class="hero-content text-center">
+        <div class="w-full max-w-xl">
+            <form action="/create" method="POST">
+                <div class="form-control">
+                    <p class="card-title text-2xl justify-center mb-4">
+                        Create a Poll
+                    </p>
+
+                    <label class="label" for="poll_name"></label>
+
+                    <input
+                        id="poll_name"
+                        name="poll_name"
+                        type="text"
+                        placeholder="Enter Question..."
+                        class="input input-bordered input-xl w-full"
+                        required
+                    />
+                </div>
+
+                <br>
+
+                <div id="options-container" class="flex flex-col gap-2">
+                    <div class="flex gap-2 option-row">
+                        <input
+                            name="options"
+                            type="text"
+                            placeholder="Answer 1..."
+                            class="input input-bordered w-full"
+                            required
+                        />
+
+                        <button
+                            type="button"
+                            class="btn btn-error btn-outline remove-option"
+                            aria-label="Remove Answer 1"
+                            title="Remove answer"
+                        >
+                            <span class="material-symbols-outlined">delete</span>
+                        </button>
+                    </div>
+
+                    <div class="flex gap-2 option-row">
+                        <input
+                            name="options"
+                            type="text"
+                            placeholder="Answer 2..."
+                            class="input input-bordered w-full"
+                            required
+                        />
+
+                        <button
+                            type="button"
+                            class="btn btn-error btn-outline remove-option"
+                            aria-label="Remove Answer 2"
+                            title="Remove answer"
+                        >
+                            <span class="material-symbols-outlined">delete</span>
+                        </button>
+                    </div>
+                </div>
+
+                <button
+                    type="button"
+                    id="add-option"
+                    class="btn btn-ghost btn-sm mt-2"
+                >
+                    + Add another answer
+                </button>
+
+                <br>
+
+                <div class="card-actions flex-col mt-4 gap-2">
+                    <button
+                        type="submit"
+                        class="btn btn-primary w-full"
+                    >
+                        Create
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const container = document.getElementById('options-container');
+    const addButton = document.getElementById('add-option');
+
+    addButton.addEventListener('click', () => {
+        const count =
+            container.querySelectorAll('.option-row').length + 1;
+
+        const row = document.createElement('div');
+        row.className = 'flex gap-2 option-row';
+
+        const input = document.createElement('input');
+        input.name = 'options';
+        input.type = 'text';
+        input.placeholder = `Answer ${count}...`;
+        input.className = 'input input-bordered w-full';
+        input.required = true;
+
+        const removeButton = document.createElement('button');
+        removeButton.type = 'button';
+        removeButton.className =
+            'btn btn-error btn-outline remove-option';
+        removeButton.setAttribute('aria-label', `Remove Answer ${count}`);
+        removeButton.title = 'Remove answer';
+
+        const icon = document.createElement('span');
+        icon.className = 'material-symbols-outlined';
+        icon.textContent = 'delete';
+
+        removeButton.appendChild(icon);
+
+        row.appendChild(input);
+        row.appendChild(removeButton);
+        container.appendChild(row);
+
+        input.focus();
+    });
+
+    container.addEventListener('click', (event) => {
+        const button = event.target.closest('.remove-option');
+
+        if (!button) return;
+
+        const rows = container.querySelectorAll('.option-row');
+
+        if (rows.length > 2) {
+            button.closest('.option-row').remove();
+        }
+    });
+</script>
+{% endblock %}
