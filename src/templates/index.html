@@ -1,5 +1,41 @@
-{% extends 'base.html' %}
+{% extends 'base.html' %} {% block content %}
+<!-- Hero -->
+<div class="hero py-10 lg:py-16 bg-base-200">
+  <div class="hero-content flex-col lg:flex-row gap-8 lg:gap-12">
+    <!-- Logo -->
+    <img src="/static/images/logo.svg" alt="Poll"
+         class="w-24 h-24 sm:w-32 sm:h-32 lg:w-48 lg:h-48" />
 
-{% block content %}
+    <!-- Join form -->
+    <div class="card w-full max-w-sm bg-base-100 shadow-2xl">
+      <form action="/join" method="POST" class="card-body">
+        <h1 class="card-title text-2xl justify-center">Join a Poll</h1>
 
+        <div class="form-control">
+          <label class="label" for="poll_id">
+            <span class="label-text">Poll ID</span>
+          </label>
+          <input
+            id="poll_id"
+            name="poll_id"
+            type="text"
+            placeholder="Enter Poll ID..."
+            class="input input-bordered"
+            required
+          />
+        </div>
+
+        <div class="card-actions flex-col mt-4 gap-2">
+          <button type="submit" class="btn btn-primary w-full">Join</button>
+          <a href="/poll/new" class="btn btn-secondary w-full">Create a Poll</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Polls near you -->
+<section class="px-4 py-8 max-w-5xl mx-auto">
+  <h2 class="text-2xl font-bold text-center">Polls Near You</h2>
+</section>
 {% endblock %}
