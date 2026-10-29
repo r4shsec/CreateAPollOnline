@@ -6,139 +6,132 @@
 <div class="hero py-10 lg:py-16 bg-base-200">
     <div class="hero-content text-center">
         <div class="w-full max-w-xl">
-            <form action="/create" method="POST">
-                <div class="form-control">
-                    <p class="card-title text-2xl justify-center mb-4">
-                        Create a Poll
-                    </p>
+            <form action="/create" method="POST" class="flex flex-col gap-4">
+                <h1 class="card-title text-2xl justify-center">Create a Poll</h1>
 
-                    <label class="label" for="poll_name"></label>
-
-                    <input
-                        id="poll_name"
-                        name="poll_name"
-                        type="text"
-                        placeholder="Enter Question..."
-                        class="input input-bordered input-xl w-full"
-                        required
-                    />
+                {% if error %}
+                <div role="alert" class="alert alert-error">
+                    <span>{{ error }}</span>
                 </div>
+                {% endif %}
 
-                <br>
+                <input
+                    id="poll_name"
+                    name="poll_name"
+                    type="text"
+                    placeholder="Enter Question..."
+                    maxlength="200"
+                    value="{{ question or '' }}"
+                    class="input input-bordered input-xl w-full"
+                    required
+                />
 
                 <div id="options-container" class="flex flex-col gap-2">
+                    {% for opt in (options or ['', '']) %}
                     <div class="flex gap-2 option-row">
                         <input
                             name="options"
                             type="text"
-                            placeholder="Answer 1..."
+                            maxlength="100"
+                            value="{{ opt }}"
                             class="input input-bordered w-full"
                             required
                         />
-
-                        <button
-                            type="button"
-                            class="btn btn-error btn-outline remove-option"
-                            aria-label="Remove Answer 1"
-                            title="Remove answer"
-                        >
+                        <button type="button" class="btn btn-error btn-outline remove-option" title="Remove answer">
                             <span class="material-symbols-outlined">delete</span>
                         </button>
                     </div>
-
-                    <div class="flex gap-2 option-row">
-                        <input
-                            name="options"
-                            type="text"
-                            placeholder="Answer 2..."
-                            class="input input-bordered w-full"
-                            required
-                        />
-
-                        <button
-                            type="button"
-                            class="btn btn-error btn-outline remove-option"
-                            aria-label="Remove Answer 2"
-                            title="Remove answer"
-                        >
-                            <span class="material-symbols-outlined">delete</span>
-                        </button>
-                    </div>
+                    {% endfor %}
                 </div>
 
-                <button
-                    type="button"
-                    id="add-option"
-                    class="btn btn-ghost btn-sm mt-2"
-                >
+                <button type="button" id="add-option" class="btn btn-ghost btn-sm self-start">
                     + Add another answer
                 </button>
 
-                <br>
+                <div class="divider my-0"></div>
 
-                <div class="card-actions flex-col mt-4 gap-2">
-                    <button
-                        type="submit"
-                        class="btn btn-primary w-full"
-                    >
-                        Create
-                    </button>
-                </div>
+                <label class="label cursor-pointer justify-between">
+                    <span class="label-text">Private poll (hidden from public listings)</span>
+                    <input type="checkbox" name="isPrivate" class="toggle toggle-primary" />
+                </label>
+
+                <label class="label cursor-pointer justify-between">
+                    <span class="label-text">Require a password to vote</span>
+                    <input type="checkbox" name="requirePassword" id="require-password" class="toggle toggle-primary" />
+                </label>
+
+                <input
+                    type="password"
+                    name="password"
+                    id="password-input"
+                    placeholder="Poll password..."
+                    autocomplete="new-password"
+                    class="input input-bordered w-full hidden"
+                />
+
+                <button type="submit" class="btn btn-primary w-full mt-2">Create</button>
             </form>
         </div>
     </div>
 </div>
+
+<template id="option-template">
+    <div class="flex gap-2 option-row">
+        <input name="options" type="text" maxlength="100" class="input input-bordered w-full" required />
+        <button type="button" class="btn btn-error btn-outline remove-option" title="Remove answer">
+            <span class="material-symbols-outlined">delete</span>
+        </button>
+    </div>
+</template>
 {% endblock %}
 
 {% block scripts %}
 <script>
+    const MIN_OPTIONS = 2;
+    const MAX_OPTIONS = 10;
+
     const container = document.getElementById('options-container');
     const addButton = document.getElementById('add-option');
+    const template = document.getElementById('option-template');
+    const requirePassword = document.getElementById('require-password');
+    const passwordInput = document.getElementById('password-input');
+
+    function refresh() {
+        const rows = container.querySelectorAll('.option-row');
+
+        rows.forEach((row, i) => {
+            const n = i + 1;
+            row.querySelector('input').placeholder = `Answer ${n}...`;
+            const btn = row.querySelector('.remove-option');
+            btn.setAttribute('aria-label', `Remove Answer ${n}`);
+            btn.disabled = rows.length <= MIN_OPTIONS;
+        });
+
+        addButton.disabled = rows.length >= MAX_OPTIONS;
+    }
 
     addButton.addEventListener('click', () => {
-        const count =
-            container.querySelectorAll('.option-row').length + 1;
-
-        const row = document.createElement('div');
-        row.className = 'flex gap-2 option-row';
-
-        const input = document.createElement('input');
-        input.name = 'options';
-        input.type = 'text';
-        input.placeholder = `Answer ${count}...`;
-        input.className = 'input input-bordered w-full';
-        input.required = true;
-
-        const removeButton = document.createElement('button');
-        removeButton.type = 'button';
-        removeButton.className =
-            'btn btn-error btn-outline remove-option';
-        removeButton.setAttribute('aria-label', `Remove Answer ${count}`);
-        removeButton.title = 'Remove answer';
-
-        const icon = document.createElement('span');
-        icon.className = 'material-symbols-outlined';
-        icon.textContent = 'delete';
-
-        removeButton.appendChild(icon);
-
-        row.appendChild(input);
-        row.appendChild(removeButton);
+        if (container.children.length >= MAX_OPTIONS) return;
+        const row = template.content.firstElementChild.cloneNode(true);
         container.appendChild(row);
-
-        input.focus();
+        refresh();
+        row.querySelector('input').focus();
     });
 
     container.addEventListener('click', (event) => {
         const button = event.target.closest('.remove-option');
-
-        if (!button) return;
-
-        const rows = container.querySelectorAll('.option-row');
-
-        if (rows.length > 2) {
-            button.closest('.option-row').remove();
-        }
+        if (!button || button.disabled) return;
+        button.closest('.option-row').remove();
+        refresh();
     });
+
+    requirePassword.addEventListener('change', () => {
+        passwordInput.classList.toggle('hidden', !requirePassword.checked);
+        passwordInput.required = requirePassword.checked;
+        if (!requirePassword.checked) passwordInput.value = '';
+    });
+
+    requirePassword.dispatchEvent(new Event('change'));
+    refresh();
 </script>
 {% endblock %}
