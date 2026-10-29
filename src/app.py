@@ -93,6 +93,16 @@ class Flask_Database_Connector:
         conn.commit()
         conn.close()
 
+    def getPoll(self, pollID):
+        conn = get_db()
+        row = conn.execute("SELECT * FROM pollDB WHERE pollID = ?", (pollID,)).fetchone()
+        conn.close()
+        if row is None:
+            return None
+        poll = dict(row)
+        poll['options'] = json.loads(poll['options'])
+        return poll
+
 db = Flask_Database_Connector()
 db.setup()
 
@@ -217,11 +227,11 @@ def create_poll():
 @app.route('/poll/<poll_id>', methods=['GET', 'POST'])
 def view_poll(poll_id):
     poll = db.getPoll(poll_id)
-    if not poll:
+    if poll is None:
         abort(404)
+    print(type(poll['options']), repr(poll['options'])[:200])
     return render_template('poll_view.html', poll=poll)
 
-# Application Programming Interface (API)
 
 if __name__ == '__main__':
     socketio.run(

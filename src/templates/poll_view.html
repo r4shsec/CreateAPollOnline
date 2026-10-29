@@ -1,9 +1,94 @@
-{% extends "base.html" %}
+{% extends "base.html" %} {% block title %}{{ poll.question }}{% endblock %} {%
+block content %}
+<div class="hero py-10 lg:py-16 bg-base-200">
+  <div class="hero-content text-center">
+    <div class="w-full max-w-xl">
+      <form
+        action="/poll/{{ poll.pollID }}"
+        method="POST"
+        class="flex flex-col gap-4"
+      >
+        <h1 class="card-title text-2xl justify-center break-words">
+          {{ poll.question }}
+        </h1>
 
-{% block title %}Poll{% endblock %}
+        {% if poll.isPrivate %}
+        <div class="flex justify-center">
+          <span class="badge badge-outline gap-1">
+            <span class="material-symbols-outlined text-base">lock</span>
+            Private poll
+          </span>
+        </div>
+        {% endif %} {% if error %}
+        <div role="alert" class="alert alert-error">
+          <span>{{ error }}</span>
+        </div>
+        {% endif %} {% if success %}
+        <div role="alert" class="alert alert-success">
+          <span>{{ success }}</span>
+        </div>
+        {% endif %}
 
-{% block content %}
+        <fieldset class="flex flex-col gap-2 text-left">
+          <legend class="sr-only">Answers</legend>
+          {% for opt in poll.options.values() %}
+          <label
+            class="label cursor-pointer justify-start gap-4 rounded-box border border-base-300 bg-base-100 px-4 py-3 has-[:checked]:border-primary"
+          >
+            <input
+              type="radio"
+              name="option"
+              value="{{ opt.voteID }}"
+              class="radio radio-primary"
+              required
+            />
+            <span class="label-text text-base break-words">{{ opt.name }}</span>
+          </label>
+          {% endfor %}
+        </fieldset>
 
-{% endblock %}
-{% block scripts %}
+        {% if poll.requirePassword %}
+        <input
+          type="password"
+          name="password"
+          placeholder="Poll password..."
+          autocomplete="off"
+          class="input input-bordered w-full"
+          required
+        />
+        {% endif %}
+
+        <button type="submit" class="btn btn-primary w-full mt-2">Vote</button>
+
+        <div class="divider my-0"></div>
+
+        <button
+          type="button"
+          id="copy-link"
+          class="btn btn-ghost btn-sm self-center"
+        >
+          <span class="material-symbols-outlined text-base">link</span>
+          <span id="copy-label">Copy poll link</span>
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  const copyButton = document.getElementById("copy-link");
+  const copyLabel = document.getElementById("copy-label");
+
+  copyButton.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      copyLabel.textContent = "Link copied";
+    } catch {
+      copyLabel.textContent = "Copy failed";
+    }
+    setTimeout(() => {
+      copyLabel.textContent = "Copy poll link";
+    }, 2000);
+  });
+</script>
 {% endblock %}
