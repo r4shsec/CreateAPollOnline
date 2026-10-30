@@ -1,4 +1,8 @@
 *.db
 *.venv/
 *tests/
+*.pytest_cache
+*.vscode
+config.json
+.env
 /src/createapoll.db

@@ -469,14 +469,6 @@
     }
   });
 
-  fetch('/wifi').then((r) => r.json()).then((d) => {
-    const link = document.getElementById('wifi-url');
-    if (!link) return;
-    const url = `${d.url}/join?poll_id=${POLL_ID}`;
-    link.href = url;
-    link.textContent = url;
-  }).catch(() => {});
-
   // ---------- Not-started -> live transition (participant view) ----------
   socket.on("poll_started", (d) => {
     if (IS_OWNER) return; // owners never get a vote form

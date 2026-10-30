@@ -1,37 +1,92 @@
 {% extends 'base.html' %}
+{% block title %}Create A Poll Online{% endblock %}
 {% block content %}
-<!-- Hero -->
-<div class="hero py-10 lg:py-16 bg-base-200">
-  <div class="hero-content flex-col lg:flex-row gap-8 lg:gap-12">
-    <!-- Logo -->
-    <img src="/static/images/logo.svg" alt="Poll"
-         class="w-24 h-24 sm:w-32 sm:h-32 lg:w-48 lg:h-48" />
+<div class="w-full">
+  <section class="hero min-h-[70vh] bg-base-200">
+    <div class="hero-content flex-col gap-10 py-16 lg:flex-row lg:gap-20">
+      <div class="max-w-xl text-center lg:text-left">
+        <h1 class="text-5xl font-extrabold leading-tight tracking-tight sm:text-6xl">Create<br class="hidden sm:block" /> instant polls.</h1>
+        <p class="mx-auto mt-5 max-w-lg text-lg text-base-content/70 lg:mx-0">Create a poll in seconds, invite your group, and see the results come in live.</p>
+        <div class="mt-8 flex flex-col justify-center gap-3 sm:flex-row lg:justify-start">
+          <a href="/create" class="btn btn-primary btn-lg">Create a Poll</a>
+          <a href="#join-poll" class="btn btn-outline btn-lg">Join a Poll</a>
+        </div>
+      </div>
 
-    <!-- Join form -->
-    <div class="card w-full max-w-sm bg-base-100 shadow-2xl">
-      <form action="/join" method="GET" class="card-body">
-        <h1 class="card-title text-2xl justify-center">Join a Poll</h1>
-
-        <div class="form-control">
-          <label class="label" for="poll_id">
-            <span class="label-text">Poll ID</span>
+      <div id="join-poll" class="card w-full max-w-sm border border-base-content/10 bg-base-100 shadow-2xl">
+        <form action="/join" method="GET" class="card-body gap-4">
+          <div class="text-center">
+            <span class="material-symbols-outlined text-4xl text-secondary">bar_chart</span>
+            <h2 class="card-title mt-2 justify-center text-2xl">Join a Poll</h2>
+            <p class="mt-1 text-sm text-base-content/60">Have a poll ID? Enter it here.</p>
+          </div>
+          <label class="form-control">
+            <span class="label-text mb-2">Poll ID</span>
+            <input id="poll_id" name="poll_id" type="text" placeholder="Enter Poll ID..." class="input input-bordered w-full" required />
           </label>
-          <input
-            id="poll_id"
-            name="poll_id"
-            type="text"
-            placeholder="Enter Poll ID..."
-            class="input input-bordered"
-            required
-          />
-        </div>
-
-        <div class="card-actions flex-col mt-4 gap-2">
-          <button type="submit" class="btn btn-primary w-full">Join</button>
-          <a href="/create" class="btn btn-secondary w-full">Create a Poll</a>
-        </div>
-      </form>
+          <button type="submit" class="btn btn-secondary w-full">Join poll</button>
+        </form>
+      </div>
     </div>
-  </div>
+  </section>
+
+  <section class="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-20 sm:px-6 lg:gap-12 lg:py-28">
+    <article class="grid items-center gap-8 rounded-3xl border border-base-content/10 bg-base-100 p-6 shadow-xl sm:p-10 lg:grid-cols-2 lg:gap-14 lg:p-14">
+      <div class="order-2 lg:order-1">
+        <h2 class="mt-4 text-3xl font-bold sm:text-4xl">Open Sourced</h2>
+        <p class="mt-4 text-base leading-relaxed text-base-content/70 sm:text-lg">Users could self-host this repository.</p>
+      </div>
+      <div role="img" aria-label="Image placeholder for Open Sourced" class="order-1 flex aspect-[4/3] items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-secondary/20 via-primary/10 to-accent/20 lg:order-2">
+        <div class="flex flex-col items-center gap-3 text-base-content/45">
+          <img src="/static/images/oss_logo.svg" alt="Open Sourced" class="w-76 h-76" />
+        </div>
+      </div>
+    </article>
+
+    <article class="grid items-center gap-8 rounded-3xl border border-base-content/10 bg-base-100 p-6 shadow-xl sm:p-10 lg:grid-cols-2 lg:gap-14 lg:p-14">
+      <div role="img" aria-label="Image placeholder for Private" class="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 via-secondary/10 to-accent/20">
+        <div class="flex flex-col items-center gap-3 text-base-content/45">
+          <img src="/static/images/private.svg" alt="Private" class="w-76 h-76" />
+        </div>
+      </div>
+      <div>
+        <h2 class="mt-4 text-3xl font-bold sm:text-4xl">Private</h2>
+        <p class="mt-4 text-base leading-relaxed text-base-content/70 sm:text-lg">Set a password for polls, admit, and deny. Keep your polls secure.</p>
+      </div>
+    </article>
+
+    <article class="grid items-center gap-8 rounded-3xl border border-base-content/10 bg-base-100 p-6 shadow-xl sm:p-10 lg:grid-cols-2 lg:gap-14 lg:p-14">
+      <div class="order-2 lg:order-1">
+        <h2 class="mt-4 text-3xl font-bold sm:text-4xl">For Corporate Meetings</h2>
+        <p class="mt-4 text-base leading-relaxed text-base-content/70 sm:text-lg">Establish voting power for members, create a poll, share a link, and make important corporate decisions.</p>
+      </div>
+      <div role="img" aria-label="Image placeholder for Corporate Meetings" class="order-1 flex aspect-[4/3] items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-accent/20 via-primary/10 to-secondary/20 lg:order-2">
+        <div class="flex flex-col items-center gap-3 text-base-content/45">
+          <img src="/static/images/corporate.svg" alt="Corporate Meetings" class="w-76 h-76" />
+        </div>
+      </div>
+    </article>
+
+    <article class="grid items-center gap-8 rounded-3xl border border-base-content/10 bg-base-100 p-6 shadow-xl sm:p-10 lg:grid-cols-2 lg:gap-14 lg:p-14">
+      <div class="order-2 lg:order-1">
+        <h2 class="mt-4 text-3xl font-bold sm:text-4xl">For Clubs</h2>
+        <p class="mt-4 text-base leading-relaxed text-base-content/70 sm:text-lg">Run club elections. Automatically know who's in charged.</p>
+      </div>
+      <div role="img" aria-label="Image placeholder for Clubs" class="order-1 flex aspect-[4/3] items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-secondary/20 via-accent/10 to-primary/20 lg:order-2">
+        <div class="flex flex-col items-center gap-3 text-base-content/45">
+          <img src="/static/images/club.svg" alt="Club Meetings" class="w-76 h-76" />
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <section class="bg-base-100 px-4 py-20 text-center sm:py-28">
+    <div class="mx-auto max-w-4xl">
+      <p class="text-sm font-semibold uppercase tracking-[0.25em] text-secondary">Your next decision starts here</p>
+      <h2 class="mt-4 text-6xl font-extrabold tracking-tight sm:text-8xl">Create polls</h2>
+      <p class="mx-auto mt-5 max-w-xl text-lg text-base-content/70">Bring people together, vote, and make important decisions.</p>
+      <a href="/create" class="btn btn-primary btn-lg mt-8 px-10">Create a Poll</a>
+    </div>
+  </section>
 </div>
 {% endblock %}

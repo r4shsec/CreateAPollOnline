@@ -3,3 +3,5 @@ PyJWT==2.15.1
 haikunator===2.1.0
 Flask-SocketIO==5.7.0
 simple-websocket==1.1.0
+bcrypt
+gunicorn

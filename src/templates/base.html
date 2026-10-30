@@ -29,8 +29,27 @@
     />
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=home,search,delete,link,qr_code_scanner,lock"
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&icon_names=home,search,delete,link,qr_code_scanner,lock,bar_chart,code,groups,diversity_3"
     />
+
+    <title>Create a Poll Online</title>
+    <meta name="description" content="Create polls completely from your browser. No login required." />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://createapoll.online" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Create a Poll Online" />
+    <meta property="og:description" content="Create polls completely from your browser. No login required." />
+    <meta property="og:url" content="https://createapoll.online" />
+    <meta property="og:image" content="https://createapoll.online/images/logo.png" />
+    <meta property="og:site_name" content="Create A Poll Online" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Create a Poll Online" />
+    <meta name="twitter:description" content="Create polls completely from your browser. No login required." />
+    <meta name="twitter:image" content="https://createapoll.online/images/logo.png" />
     <!-- Custom CSS -->
     <link rel="stylesheet" href="/static/styles/theme.css" />
     <link rel="stylesheet" href="/static/styles/custom.css" />
@@ -69,6 +88,12 @@
                 <span class="max-sm:hidden">Home</span>
               </a>
             </li>
+            <li>
+              <a href="https://github.com/r4shsec/CreateAPollOnline" class="rounded-lg font-medium">
+                <span class="material-symbols-outlined text-[20px]">code</span>
+                <span class="max-sm:hidden">GitHub</span>
+              </a>
+            </li>
           </ul>
         </div>
       </nav>
@@ -78,11 +103,6 @@
     <main class="flex-1 flex flex-col justify-center px-4 py-10">
       {% block content %} {% endblock %}
     </main>
-
-    <footer class="border-t border-base-content/10 bg-base-100 py-5">
-      <p class="text-center text-sm text-base-content/60">
-      </p>
-    </footer>
 
     {% block scripts %} {% endblock %}
   </body>

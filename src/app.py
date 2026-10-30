@@ -21,12 +21,15 @@ app = Flask(__name__, template_folder='templates', static_folder='static')
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 haikunator = Haikunator()
 
-DATABASE = 'createapoll.db'
-secret = "1op9smt_TX3fI27-L_QOpHfErqdUmqXXPgyIkAjUt3Y"
+with open('config.json') as f:
+    config = json.load(f)
 
-MAX_OPTIONS = 10
-MAX_QUESTION_LEN = 200
-MAX_OPTION_LEN = 100
+DATABASE = config['DB_NAME']
+secret = os.environ.get('APP_SECRET')
+
+MAX_OPTIONS = config['MAX_OPTIONS']
+MAX_QUESTION_LEN = config['MAX_QUESTION_LEN']
+MAX_OPTION_LEN = config['MAX_OPTION_LEN']
 
 
 def get_db():
@@ -886,4 +889,4 @@ def handle_vote(data):
 
 
 if __name__ == '__main__':
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=os.environ.get('FLASK_DEBUG') == '1')
