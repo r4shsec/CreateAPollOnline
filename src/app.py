@@ -11,6 +11,7 @@ import bcrypt
 import sqlite3
 import secrets
 import socket
+from dotenv import load_dotenv ; load_dotenv()
 from haikunator import Haikunator
 from flask_socketio import SocketIO, emit, join_room, leave_room
 from flask import Flask, render_template, request, redirect, make_response, url_for, jsonify, g, abort
@@ -25,7 +26,7 @@ with open('config.json') as f:
     config = json.load(f)
 
 DATABASE = config['DB_NAME']
-secret = config['APP_SECRET']
+secret = os.getenv("APP_SECRET")
 
 MAX_OPTIONS = config['MAX_OPTIONS']
 MAX_QUESTION_LEN = config['MAX_QUESTION_LEN']

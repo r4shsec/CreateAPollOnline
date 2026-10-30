@@ -1,6 +1,5 @@
 {
     "DB_NAME":"createapoll.db",
-    "APP_SECRET":"APP_SECRET",
     "MAX_OPTIONS":10,
     "MAX_QUESTION_LEN":200,
     "MAX_OPTION_LEN":100
