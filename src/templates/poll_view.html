@@ -1,94 +1,757 @@
-{% extends "base.html" %} {% block title %}{{ poll.question }}{% endblock %} {%
-block content %}
+{% extends "base.html" %}
+{% block title %}{{ poll.question }}{% endblock %}
+{% block content %}
 <div class="hero py-10 lg:py-16 bg-base-200">
   <div class="hero-content text-center">
-    <div class="w-full max-w-xl">
-      <form
-        action="/poll/{{ poll.pollID }}"
-        method="POST"
-        class="flex flex-col gap-4"
-      >
-        <h1 class="card-title text-2xl justify-center break-words">
-          {{ poll.question }}
-        </h1>
+    <div class="w-full max-w-xl flex flex-col gap-4">
+      <h1 class="card-title text-2xl justify-center break-words">
+        {{ poll.question }}
+      </h1>
 
+      <div class="flex justify-center gap-2 flex-wrap">
         {% if poll.isPrivate %}
-        <div class="flex justify-center">
-          <span class="badge badge-outline gap-1">
-            <span class="material-symbols-outlined text-base">lock</span>
-            Private poll
+        <span class="badge badge-outline gap-1">
+          <span class="material-symbols-outlined text-base">lock</span>
+          Private poll
+        </span>
+        {% endif %}
+        <span id="status-badge" class="badge
+          {% if poll.status == 'live' %}badge-success{% elif poll.status == 'closed' %}badge-neutral{% else %}badge-warning{% endif %}">
+          {% if poll.status == 'live' %}Live{% elif poll.status == 'closed' %}Closed{% else %}Not started{% endif %}
+        </span>
+      </div>
+
+      {% if error %}
+      <div role="alert" class="alert alert-error"><span>{{ error }}</span></div>
+      {% endif %}
+      <div id="vote-feedback" role="status" class="alert alert-soft hidden">
+        <span id="vote-feedback-text"></span>
+      </div>
+
+      {% if isOwner %}
+      {% set pending_members = poll.participants | selectattr('status', 'equalto', 'pending') | list %}
+      {% if pending_members %}
+      <section class="card bg-base-100 border border-warning/40 shadow-xl text-left">
+        <div class="card-body gap-3">
+          <h2 class="card-title text-lg">Join requests <span id="join-request-count" class="badge badge-warning">{{ pending_members|length }}</span></h2>
+          <div id="join-request-list" class="flex flex-col gap-3"></div>
+        </div>
+      </section>
+      {% else %}
+      <section id="join-requests-panel" class="card hidden bg-base-100 border border-warning/40 shadow-xl text-left">
+        <div class="card-body gap-3">
+          <h2 class="card-title text-lg">Join requests <span id="join-request-count" class="badge badge-warning">0</span></h2>
+          <div id="join-request-list" class="flex flex-col gap-3"></div>
+        </div>
+      </section>
+      {% endif %}
+      {% if poll.isPrivate and not poll.isClubMode %}
+      <section id="voting-power-section" class="collapse collapse-arrow card bg-base-100 border border-base-300 shadow-xl text-left hidden">
+        <input type="checkbox" id="voting-power-toggle" />
+        <div class="collapse-title text-lg font-semibold flex items-center gap-2">
+          Member voting power <span id="voting-power-count" class="badge badge-primary badge-sm">0</span>
+        </div>
+        <div class="collapse-content">
+          <div class="card-body gap-3 p-0">
+            <p class="text-sm text-base-content/60">Set each approved member's weight before they vote. A percentage scales each vote (for example, 50% counts as half a vote). Changes save live. Public polls always use one vote per person.</p>
+            <div id="voting-power-members" class="flex flex-col gap-2"></div>
+            <p id="voting-power-feedback" role="status" class="text-sm text-base-content/60" aria-live="polite"></p>
+          </div>
+        </div>
+      </section>
+      {% endif %}
+      <!-- Owner: collapsible live member panel -->
+      <div class="collapse collapse-arrow bg-base-100 border border-base-300 shadow-xl text-left">
+        <input type="checkbox" id="members-toggle" checked />
+        <div class="collapse-title text-lg font-semibold flex items-center gap-2">
+          Members
+          <span id="member-count" class="badge badge-primary badge-sm">
+            0
           </span>
         </div>
-        {% endif %} {% if error %}
-        <div role="alert" class="alert alert-error">
-          <span>{{ error }}</span>
+        <div class="collapse-content">
+          <ul id="member-list" class="flex flex-wrap gap-2"></ul>
+          <p class="text-xs text-base-content/60 mt-2">
+            Updates live as people open this poll.
+          </p>
         </div>
-        {% endif %} {% if success %}
-        <div role="alert" class="alert alert-success">
-          <span>{{ success }}</span>
-        </div>
-        {% endif %}
+      </div>
 
+      {% if poll.isClubMode and votingClosed %}
+      <section id="club-officers" class="card bg-base-100 shadow-xl text-left">
+        <div class="card-body gap-2">
+          <h2 class="card-title">Club officers</h2>
+          {% for officer in clubResults %}<p><strong>{{ officer.role }}:</strong> {{ officer.name }} ({{ officer.votes }} votes)</p>{% endfor %}
+        </div>
+      </section>
+      {% else %}
+      <!-- Owner can monitor results but has no ballot -->
+      <div class="card bg-base-100 shadow-xl text-left">
+        <div class="card-body gap-2">
+          <h2 class="card-title text-lg">Live results</h2>
+          <div id="tally" class="flex flex-col gap-2"></div>
+        </div>
+      </div>
+      {% if poll.isClubMode %}<div id="club-officers" class="hidden"></div>{% endif %}
+      {% endif %}
+
+      {% if poll.status == 'draft' %}
+      {% if poll.isClubMode %}
+      <form action="{{ url_for('start_poll', poll_id=poll.pollID) }}" method="POST">
+        <button type="submit" class="btn btn-primary w-full">Start Vote</button>
+      </form>
+      <p class="text-sm text-base-content/60">Members each vote for one candidate. You can monitor the tally here.</p>
+      {% else %}
+      <form action="{{ url_for('start_poll', poll_id=poll.pollID) }}" method="POST">
+        <button type="submit" class="btn btn-primary w-full">Start poll</button>
+      </form>
+      <p class="text-sm text-base-content/60">
+        Voting opens as soon as you start the poll.
+      </p>
+      {% endif %}
+      {% elif poll.status == 'live' %}
+      {% if poll.isClubMode %}
+      <form id="end-vote-form" action="{{ url_for('end_poll', poll_id=poll.pollID) }}" method="POST">
+        <button type="submit" class="btn btn-error w-full">End Vote</button>
+      </form>
+      <div role="status" class="alert alert-success alert-soft"><span>Members select one candidate. The four candidates with the most votes will be assigned roles after voting ends.</span></div>
+      {% else %}
+      <div role="status" class="alert alert-success alert-soft">
+        <span>Your poll is live. Share the link so people can vote.</span>
+      </div>
+      <form id="end-vote-form" action="{{ url_for('end_poll', poll_id=poll.pollID) }}" method="POST">
+        <button type="submit" class="btn btn-error btn-outline w-full">End poll</button>
+      </form>
+      {% endif %}
+      {% else %}
+      <div role="status" class="alert alert-info"><span>Voting is closed.</span></div>
+      <a id="export-results" href="{{ url_for('export_poll_results', poll_id=poll.pollID) }}" class="btn btn-primary w-full">Export results (CSV)</a>
+      {% endif %}
+
+      {% elif poll.isPrivate and not participantJoined and not votingClosed %}
+      <form method="POST" action="{{ url_for('request_to_join', poll_id=poll.pollID) }}" class="card bg-base-100 border border-base-300 text-left">
+        <div class="card-body gap-3">
+          <h2 class="card-title">Join this private poll</h2>
+          <p class="text-sm text-base-content/70">Enter your name{% if poll.password %} and the poll password{% endif %}. Your name will be visible to the host and admitted members.</p>
+          <input name="member_name" type="text" maxlength="60" value="{{ joinedName or '' }}" placeholder="Your name" autocomplete="name" class="input input-bordered w-full" required />
+          {% if poll.password %}
+          <input name="password" type="password" placeholder="Poll password" autocomplete="off" class="input input-bordered w-full" required />
+          {% endif %}
+          <button class="btn btn-primary w-full">Request to join</button>
+        </div>
+      </form>
+      {% elif poll.isPrivate and not participantJoined and votingClosed %}
+      <div role="status" class="alert alert-info"><span>Voting has ended. This poll is no longer accepting join requests.</span></div>
+      {% elif not participantApproved %}
+      <div id="join-pending-notice" role="status" class="alert alert-warning">
+        <span>Your request to join is waiting for the host's approval.</span>
+      </div>
+      {% elif notStarted %}
+      <!-- Participant, poll not started: can see, cannot vote -->
+      <div role="status" class="alert alert-info alert-soft" id="not-started-notice">
+        <span>Vote has not started yet.</span>
+      </div>
+      <ul id="options-preview" class="flex flex-col gap-2 text-left opacity-70">
+        {% for opt in poll.options.values() %}
+        <li class="rounded-box border border-base-300 bg-base-100 px-4 py-3 break-words">
+          {{ opt.name }}
+        </li>
+        {% endfor %}
+      </ul>
+
+      <!-- Vote form: hidden until the owner starts the poll -->
+      <form id="vote-form" class="hidden flex-col gap-4">
         <fieldset class="flex flex-col gap-2 text-left">
           <legend class="sr-only">Answers</legend>
           {% for opt in poll.options.values() %}
-          <label
-            class="label cursor-pointer justify-start gap-4 rounded-box border border-base-300 bg-base-100 px-4 py-3 has-[:checked]:border-primary"
-          >
-            <input
-              type="radio"
-              name="option"
-              value="{{ opt.voteID }}"
-              class="radio radio-primary"
-              required
-            />
+          <label class="label cursor-pointer justify-start gap-4 rounded-box border border-base-300 bg-base-100 px-4 py-3 has-[:checked]:border-primary">
+            <input type="radio" name="option" value="{{ opt.voteID }}"
+                   class="radio radio-primary" required />
             <span class="label-text text-base break-words">{{ opt.name }}</span>
           </label>
           {% endfor %}
         </fieldset>
 
-        {% if poll.requirePassword %}
-        <input
-          type="password"
-          name="password"
-          placeholder="Poll password..."
-          autocomplete="off"
-          class="input input-bordered w-full"
-          required
-        />
-        {% endif %}
+        <button type="submit" class="btn btn-primary w-full mt-2">Vote</button>
+      </form>
+
+      <div id="live-results" class="hidden flex flex-col gap-2 text-left"></div>
+
+      {% elif votingClosed %}
+      <div role="status" class="alert alert-info"><span>Voting is closed. Here are the final results.</span></div>
+      {% if poll.isClubMode %}
+      <section id="club-officers" class="card bg-base-100 shadow-xl text-left">
+        <div class="card-body gap-2">
+          <h2 class="card-title">Club officers</h2>
+          {% for officer in clubResults %}<p><strong>{{ officer.role }}:</strong> {{ officer.name }} ({{ officer.votes }} votes)</p>{% endfor %}
+        </div>
+      </section>
+      {% else %}
+      <div id="live-results" class="flex flex-col gap-2 text-left"></div>
+      {% endif %}
+
+      {% else %}
+      <!-- Participant, poll live: vote form -->
+      <form id="vote-form" class="flex flex-col gap-4">
+        <fieldset class="flex flex-col gap-2 text-left">
+          <legend class="sr-only">Answers</legend>
+          {% for opt in poll.options.values() %}
+          <label class="label cursor-pointer justify-start gap-4 rounded-box border border-base-300 bg-base-100 px-4 py-3 has-[:checked]:border-primary">
+            <input type="radio" name="option" value="{{ opt.voteID }}"
+                   class="radio radio-primary" required />
+            <span class="label-text text-base break-words">{{ opt.name }}</span>
+          </label>
+          {% endfor %}
+        </fieldset>
 
         <button type="submit" class="btn btn-primary w-full mt-2">Vote</button>
+      </form>
 
-        <div class="divider my-0"></div>
+      <div id="live-results" class="hidden flex flex-col gap-2 text-left"></div>
+      {% endif %}
 
-        <button
-          type="button"
-          id="copy-link"
-          class="btn btn-ghost btn-sm self-center"
-        >
+      {% if not isOwner and participantApproved %}
+      <section class="card bg-base-100 border border-base-300 text-left">
+        <div class="card-body gap-2">
+          <h2 class="card-title text-lg">Members <span id="member-count" class="badge badge-primary badge-sm">0</span></h2>
+          <ul id="member-list" class="flex flex-wrap gap-2"></ul>
+        </div>
+      </section>
+      {% endif %}
+
+      <div class="divider my-0"></div>
+
+      <div class="flex gap-2 justify-center flex-wrap">
+        <button type="button" id="copy-link" class="btn btn-dash btn-secondary">
           <span class="material-symbols-outlined text-base">link</span>
           <span id="copy-label">Copy poll link</span>
         </button>
-      </form>
+        <button type="button" id="qr-code" class="btn btn-dash btn-secondary">
+          <span class="material-symbols-outlined text-base">qr_code_scanner</span>
+          <span id="qr-label">Display QR Code</span>
+        </button>
+      </div>
+      {% if poll.clubID and not poll.isClubMode %}
+      <a class="btn btn-outline btn-primary" href="{{ url_for('view_club', club_id=poll.clubID) }}">Club election dashboard</a>
+      {% endif %}
     </div>
   </div>
 </div>
-{% endblock %} {% block scripts %}
+
+<!-- QR modal -->
+<dialog id="qr-modal" class="modal modal-bottom sm:modal-middle">
+  <div class="modal-box text-center">
+    <h3 class="font-bold text-lg mb-1">Scan to join</h3>
+    <p class="text-sm text-base-content/60 mb-4">
+      Open the camera app and point it at the code.
+    </p>
+
+    <div class="flex justify-center mb-4">
+      <img id="qr-image" alt="QR code to join this poll"
+           class="rounded-box bg-white p-3 w-56 h-56" />
+    </div>
+
+    <div class="flex items-center justify-center gap-2 mb-2">
+      <span class="text-sm text-base-content/60">Poll ID</span>
+      <code class="font-mono font-semibold tracking-widest">{{ poll.pollID }}</code>
+      <button type="button" id="copy-poll-id" class="btn btn-ghost btn-xs">
+        Copy
+      </button>
+    </div>
+
+    {% if isOwner and poll.password %}
+    <div class="form-control text-left">
+      <label class="label" for="qr-password"><span class="label-text">Join password</span></label>
+      <div class="join w-full">
+        <input id="qr-password" type="password" placeholder="Re-enter password to show guests" class="input input-bordered join-item w-full" autocomplete="off" />
+        <button type="button" id="toggle-qr-password" class="btn join-item">Show</button>
+      </div>
+      <p class="text-xs text-base-content/60 mt-1">Newly created poll passwords are prefilled in this browser session. For an older poll, enter its password to show it here.</p>
+    </div>
+    {% elif isOwner and poll.isClubMode %}
+    <p class="text-sm text-base-content/60">No password is required to join this poll.</p>
+    {% endif %}
+
+    <div class="modal-action justify-center">
+      <form method="dialog">
+        <button class="btn">Close</button>
+      </form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop">
+    <button>close</button>
+  </form>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"
+        crossorigin="anonymous"></script>
 <script>
+  const POLL_ID = "{{ poll.pollID }}";
+  const IS_OWNER = {{ 'true' if isOwner else 'false' }};
+  const pollIsClubMode = {{ 'true' if poll.isClubMode else 'false' }};
+  let tally = JSON.parse('{{ tallyJson | safe }}' || "[]");
+
+  // Join URL that the QR code and share modal point to
+  const POLL_URL = `${window.location.origin}/join?poll_id=${POLL_ID}`;
+
+  const socket = io({ transports: ["websocket"] });
+
+  socket.on("connect", () => {
+    socket.emit("join_poll", { pollID: POLL_ID });
+  });
+  socket.on("join_pending", (d) => showFeedback("warning", d.message));
+  socket.on("join_required", (d) => showFeedback("warning", d.message));
+  socket.on("socket_error", (d) => showFeedback("error", d.message));
+
+  // ---------- Members (owner view) ----------
+  const memberList = document.getElementById("member-list");
+  const memberCount = document.getElementById("member-count");
+
+  function renderMembers(data) {
+    if (!memberList) return;
+    memberCount.textContent = data.count;
+    memberList.innerHTML = "";
+    for (const m of data.members) {
+      const li = document.createElement("li");
+      li.className = "badge badge-outline";
+      li.textContent = m.username;
+      memberList.appendChild(li);
+    }
+  }
+  function renderJoinRequests(data) {
+    if (!IS_OWNER) return;
+    const panel = document.getElementById("join-requests-panel");
+    const list = document.getElementById("join-request-list");
+    const count = document.getElementById("join-request-count");
+    if (!list) return;
+    count.textContent = data.members.length;
+    panel?.classList.toggle("hidden", data.members.length === 0);
+    list.replaceChildren();
+    for (const member of data.members) {
+      const row = document.createElement("div");
+      row.className = "flex items-center justify-between gap-3";
+      const name = document.createElement("span");
+      name.className = "font-medium";
+      name.textContent = member.username;
+      const actions = document.createElement("div");
+      actions.className = "flex gap-2";
+      for (const [decision, label, className] of [
+        ["admit", "Admit", "btn btn-success btn-sm"],
+        ["deny", "Deny", "btn btn-error btn-outline btn-sm"],
+      ]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = className;
+        button.textContent = label;
+        button.dataset.userId = member.userID;
+        button.dataset.decision = decision;
+        actions.append(button);
+      }
+      row.append(name, actions);
+      list.append(row);
+    }
+  }
+  document.getElementById("join-request-list")?.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-decision]");
+    if (!button) return;
+    button.disabled = true;
+    socket.emit("member_decision", {
+      pollID: POLL_ID,
+      userID: button.dataset.userId,
+      decision: button.dataset.decision,
+    });
+  });
+  const votingPowerSection = document.getElementById("voting-power-section");
+  const votingPowerMembers = document.getElementById("voting-power-members");
+  function renderVotingPowerMembers(data) {
+    if (!IS_OWNER || !votingPowerSection || !votingPowerMembers) return;
+    const members = data.members || [];
+    const wasHidden = votingPowerSection.classList.contains("hidden");
+    votingPowerSection.classList.toggle("hidden", members.length === 0);
+    if (wasHidden && members.length) document.getElementById("voting-power-toggle").checked = true;
+    document.getElementById("voting-power-count").textContent = members.length;
+    votingPowerMembers.replaceChildren();
+    for (const member of members) {
+      const form = document.createElement("form");
+      form.dataset.votingPowerForm = "";
+      form.dataset.userId = member.userID;
+      form.className = "grid grid-cols-[minmax(0,1fr)_5rem_7rem_auto] items-center gap-2";
+      const name = document.createElement("span");
+      name.className = "font-medium truncate";
+      name.textContent = member.username;
+      const power = document.createElement("input");
+      power.name = "votingPower";
+      power.type = "number";
+      power.min = "1";
+      power.max = member.votingPowerMode === "percent" ? "100" : "1000";
+      power.step = member.votingPowerMode === "percent" ? "0.01" : "1";
+      power.value = member.votingPower ?? 1;
+      power.required = true;
+      power.setAttribute("aria-label", `Voting power for ${member.username}`);
+      power.className = "input input-bordered input-sm w-full";
+      const mode = document.createElement("select");
+      mode.name = "votingPowerMode";
+      mode.setAttribute("aria-label", `Voting power mode for ${member.username}`);
+      mode.className = "select select-bordered select-sm w-full";
+      for (const value of ["votes", "percent"]) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        option.selected = (member.votingPowerMode || "votes") === value;
+        mode.append(option);
+      }
+      mode.addEventListener("change", () => {
+        const percent = mode.value === "percent";
+        power.max = percent ? "100" : "1000";
+        power.step = percent ? "0.01" : "1";
+        if (!percent) power.value = Math.max(1, Math.round(Number(power.value)));
+      });
+      const save = document.createElement("button");
+      save.type = "submit";
+      save.className = "btn btn-primary btn-sm";
+      save.textContent = "Save";
+      form.append(name, power, mode, save);
+      votingPowerMembers.append(form);
+    }
+  }
+  votingPowerMembers?.addEventListener("submit", (event) => {
+      const form = event.target.closest("[data-voting-power-form]");
+      if (!form) return;
+      event.preventDefault();
+      const button = form.querySelector("button");
+      button.disabled = true;
+      socket.emit("set_member_power", {
+        pollID: POLL_ID,
+        userID: form.dataset.userId,
+        votingPower: form.elements.votingPower.value,
+        votingPowerMode: form.elements.votingPowerMode.value,
+      });
+  });
+  socket.on("voting_power_result", (data) => {
+    const feedback = document.getElementById("voting-power-feedback");
+    const form = [...document.querySelectorAll("[data-voting-power-form]")]
+      .find((item) => item.dataset.userId === data.userID);
+    if (form) form.querySelector("button").disabled = false;
+    if (feedback) {
+      feedback.textContent = data.message;
+      feedback.className = `text-sm ${data.ok ? "text-success" : "text-error"}`;
+    }
+  });
+  socket.on("voting_power_updated", (data) => {
+    if (!IS_OWNER) return;
+    const form = [...document.querySelectorAll("[data-voting-power-form]")]
+      .find((item) => item.dataset.userId === data.userID);
+    if (!form) return;
+    form.elements.votingPower.value = data.votingPower;
+    form.elements.votingPowerMode.value = data.votingPowerMode;
+    form.elements.votingPowerMode.dispatchEvent(new Event("change"));
+  });
+  socket.on("voting_power_members", renderVotingPowerMembers);
+  socket.on("members_update", renderMembers);
+  socket.on("join_requests", renderJoinRequests);
+  socket.on("member_joined", (d) => {
+    if (!IS_OWNER) return;
+    showFeedback("info", `${d.username} joined the poll`);
+  });
+  socket.on("member_left", (d) => {
+    if (!IS_OWNER) return;
+    showFeedback("info", `${d.username} left the poll`);
+  });
+  socket.on("member_status", (d) => {
+    if (d.userID === "{{ poll.userID }}") return;
+    if (d.status === "approved") window.location.reload();
+    if (d.status === "cancelled") {
+      document.getElementById("join-pending-notice")?.remove();
+      showFeedback("error", d.message || "The host denied your join request.");
+    }
+  });
+
+  fetch('/wifi').then((r) => r.json()).then((d) => {
+    const link = document.getElementById('wifi-url');
+    if (!link) return;
+    const url = `${d.url}/join?poll_id=${POLL_ID}`;
+    link.href = url;
+    link.textContent = url;
+  }).catch(() => {});
+
+  // ---------- Not-started -> live transition (participant view) ----------
+  socket.on("poll_started", (d) => {
+    if (IS_OWNER) return; // owners never get a vote form
+
+    const badge = document.getElementById("status-badge");
+    if (badge) {
+      badge.className = "badge badge-success";
+      badge.textContent = "Live";
+    }
+
+    document.getElementById("not-started-notice")?.remove();
+    document.getElementById("options-preview")?.remove();
+
+    const form = document.getElementById("vote-form");
+    if (form) {
+      form.classList.remove("hidden");
+      form.classList.add("flex");
+    }
+    if (d.tally) tally = d.tally;
+    renderTally();
+  });
+  socket.on("poll_ended", (d) => {
+    const badge = document.getElementById("status-badge");
+    if (badge) {
+      badge.className = "badge badge-neutral";
+      badge.textContent = "Closed";
+    }
+    if (!IS_OWNER) {
+      document.getElementById("vote-form")?.remove();
+      document.getElementById("not-started-notice")?.remove();
+      document.getElementById("options-preview")?.remove();
+    }
+    const endVoteForm = document.getElementById("end-vote-form");
+    const exportContainer = endVoteForm?.parentElement;
+    endVoteForm?.remove();
+    if (IS_OWNER && !document.getElementById("export-results")) {
+      const exportLink = document.createElement("a");
+      exportLink.id = "export-results";
+      exportLink.href = `/poll/${encodeURIComponent(POLL_ID)}/export.csv`;
+      exportLink.className = "btn btn-primary w-full";
+      exportLink.textContent = "Export results (CSV)";
+      exportContainer?.append(exportLink);
+    }
+    const results = document.getElementById("live-results");
+    if (d.tally) tally = d.tally;
+    if (pollIsClubMode) {
+      results?.classList.add("hidden");
+      if (d.officers) renderClubOfficers(d.officers);
+    } else {
+      results?.classList.remove("hidden");
+      renderTally();
+    }
+  });
+
+  function renderClubOfficers(officers) {
+    const container = document.getElementById("club-officers");
+    if (!container) return;
+    container.className = "card bg-base-100 shadow-xl text-left";
+    container.replaceChildren();
+    const body = document.createElement("div");
+    body.className = "card-body gap-2";
+    const heading = document.createElement("h2");
+    heading.className = "card-title";
+    heading.textContent = "Club officers";
+    body.append(heading);
+    for (const officer of officers) {
+      const row = document.createElement("p");
+      const role = document.createElement("strong");
+      role.textContent = `${officer.role}: `;
+      row.append(role, document.createTextNode(`${officer.name} (${officer.votes} votes)`));
+      body.append(row);
+    }
+    container.append(body);
+  }
+
+  // ---------- Voting ----------
+  function showFeedback(kind, message) {
+    const box = document.getElementById("vote-feedback");
+    const text = document.getElementById("vote-feedback-text");
+    if (!box || !text) return;
+    box.className = `alert alert-${kind} alert-soft`;
+    text.textContent = message;
+  }
+
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {}
+    const field = document.createElement("textarea");
+    field.value = text;
+    field.setAttribute("readonly", "");
+    field.style.position = "fixed";
+    field.style.opacity = "0";
+    document.body.appendChild(field);
+    field.focus();
+    field.select();
+    let copied = false;
+    try { copied = document.execCommand("copy"); } catch {}
+    field.remove();
+    return copied;
+  }
+
+  const voteForm = document.getElementById("vote-form");
+  if (voteForm) {
+    voteForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const checked = voteForm.querySelector('input[name="option"]:checked');
+      if (!checked) return;
+      socket.emit("vote", {
+        pollID: POLL_ID,
+        voteID: checked.value,
+      });
+    });
+  }
+
+  socket.on("vote_result", (d) => {
+    showFeedback(d.ok ? "success" : "error", d.message);
+    if (d.ok && voteForm) {
+      voteForm.remove();
+      const results = document.getElementById("live-results");
+      if (results && !pollIsClubMode) results.classList.remove("hidden");
+    }
+  });
+
+  // ---------- Live tally (percentages, no vote counts) ----------
+  // Largest-remainder rounding so percentages always sum to exactly 100.
+  function percentages(t) {
+    const total = t.reduce((sum, o) => sum + (o.votes || 0), 0);
+    if (total === 0) return t.map(() => 0);
+
+    const raw = t.map((o) => ((o.votes || 0) / total) * 100);
+    const floors = raw.map(Math.floor);
+    let remainder = 100 - floors.reduce((a, b) => a + b, 0);
+
+    // Hand out leftover percentage points to the biggest fractional remainders
+    const order = raw
+      .map((v, i) => [i, v - Math.floor(v)])
+      .sort((a, b) => b[1] - a[1]);
+    for (let k = 0; k < remainder && k < order.length; k++) {
+      floors[order[k][0]] += 1;
+    }
+    return floors;
+  }
+
+  function renderTally() {
+    const container = document.getElementById("tally") ||
+                      document.getElementById("live-results");
+    if (!container || !tally.length) return;
+
+    const pcts = percentages(tally);
+    container.innerHTML = "";
+
+    tally.forEach((opt, i) => {
+      const row = document.createElement("div");
+      row.innerHTML = `
+        <div class="flex justify-between text-sm mb-1">
+          <span class="break-words">${opt.name}</span>
+          <span class="font-semibold">${pollIsClubMode ? `${opt.votes} votes` : `${pcts[i]}%`}</span>
+        </div>
+        <progress class="progress progress-primary w-full"
+                  value="${pcts[i]}" max="100"></progress>`;
+      container.appendChild(row);
+    });
+  }
+
+  socket.on("tally_update", (d) => {
+    tally = d.tally;
+    if (IS_OWNER || !pollIsClubMode) {
+      renderTally();
+    }
+  });
+
+  // Owner sees current results immediately on page load
+  if (IS_OWNER) renderTally();
+  if ({{ 'true' if votingClosed and not isOwner else 'false' }}) renderTally();
+
+  // ---------- Copy link ----------
   const copyButton = document.getElementById("copy-link");
   const copyLabel = document.getElementById("copy-label");
+  if (copyButton) {
+    copyButton.addEventListener("click", async () => {
+      copyLabel.textContent = (await copyText(POLL_URL)) ? "Link copied" : "Copy failed";
+      setTimeout(() => (copyLabel.textContent = "Copy poll link"), 2000);
+    });
+  }
 
-  copyButton.addEventListener("click", async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      copyLabel.textContent = "Link copied";
-    } catch {
-      copyLabel.textContent = "Copy failed";
+  // ---------- QR code (rendered into a blob:// URL) ----------
+  const qrModal = document.getElementById("qr-modal");
+  const qrImage = document.getElementById("qr-image");
+  const qrPassword = document.getElementById("qr-password");
+  const qrPasswordToggle = document.getElementById("toggle-qr-password");
+  let qrBlobUrl = null;
+
+  if (IS_OWNER && qrPassword) {
+    const createdPassword = sessionStorage.getItem("created-poll-password");
+    if (createdPassword) qrPassword.value = createdPassword;
+  }
+
+  qrPasswordToggle?.addEventListener("click", () => {
+    if (qrPassword.type === "text") {
+      qrPassword.type = "password";
+      qrPasswordToggle.textContent = "Show";
+      return;
     }
-    setTimeout(() => {
-      copyLabel.textContent = "Copy poll link";
-    }, 2000);
+    if (!qrPassword.value) {
+      showFeedback("error", "Enter the join password to display it.");
+      return;
+    }
+    qrPassword.type = "text";
+    qrPasswordToggle.textContent = "Hide";
+  });
+
+  function renderQr() {
+    // Hidden holder: qrcodejs draws its canvas inside a DOM element
+    let holder = document.getElementById("qr-holder");
+    if (!holder) {
+      holder = document.createElement("div");
+      holder.id = "qr-holder";
+      holder.style.display = "none";
+      document.body.appendChild(holder);
+    }
+    holder.innerHTML = "";
+
+    try {
+      new QRCode(holder, {
+        text: POLL_URL,
+        width: 512,
+        height: 512,
+        correctLevel: QRCode.CorrectLevel.M,
+      });
+    } catch (err) {
+      console.error("QR generation failed", err);
+      showFeedback("error", "Could not generate QR code.");
+      return;
+    }
+
+    // qrcodejs renders a canvas (plus an <img> duplicate) inside the holder
+    const canvas = holder.querySelector("canvas");
+    if (!canvas || !canvas.toBlob) {
+      showFeedback("error", "Could not generate QR code.");
+      return;
+    }
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      if (qrBlobUrl) URL.revokeObjectURL(qrBlobUrl); // avoid leaking blobs
+      qrBlobUrl = URL.createObjectURL(blob);
+      qrImage.src = qrBlobUrl; // blob://...
+      qrModal.showModal();
+    }, "image/png");
+  }
+
+  document.getElementById("qr-code")?.addEventListener("click", renderQr);
+
+  // Revoke the blob when the modal closes so memory is freed
+  qrModal?.addEventListener("close", () => {
+    if (qrPassword) {
+      qrPassword.type = "password";
+      qrPassword.value = "";
+      qrPasswordToggle.textContent = "Show";
+    }
+    if (qrBlobUrl) {
+      URL.revokeObjectURL(qrBlobUrl);
+      qrBlobUrl = null;
+      qrImage.removeAttribute("src");
+    }
+  });
+
+  // Copy Poll ID from the modal
+  document.getElementById("copy-poll-id")?.addEventListener("click", async () => {
+    const btn = document.getElementById("copy-poll-id");
+    btn.textContent = (await copyText(POLL_ID)) ? "Copied" : "Copy failed";
+    setTimeout(() => (btn.textContent = "Copy"), 1500);
   });
 </script>
 {% endblock %}

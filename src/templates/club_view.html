@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Club election{% endblock %}
+{% block content %}
+<div class="hero py-10 lg:py-14 bg-base-200">
+  <div class="hero-content w-full max-w-3xl flex-col gap-6">
+    <h1 class="text-3xl font-bold text-center">Club election</h1>
+    <p class="text-center text-base-content/70">
+      Four private votes were created from the candidate names you entered. Members choose one candidate in each role poll. The host can monitor results but cannot vote. Share each role link; members enter the password when one is set, and the host approves each join request.
+    </p>
+
+    {% if isOwner and not allClosed %}
+      {% if polls[0].status == 'draft' %}
+      <form method="POST" action="{{ url_for('start_club', club_id=clubID) }}" class="w-full">
+        <button class="btn btn-primary w-full">Start all four votes</button>
+      </form>
+      {% elif polls[0].status == 'live' and allVoted %}
+      <form method="POST" action="{{ url_for('finish_club', club_id=clubID) }}" class="w-full">
+        <button class="btn btn-error w-full">Finish voting and show officers</button>
+      </form>
+      {% elif polls[0].status == 'live' %}
+      <div role="status" class="alert alert-info w-full text-left">
+        <span>Voting is still in progress. The officer results stay hidden until every admitted member has voted in all four ballots.</span>
+      </div>
+      {% endif %}
+    {% endif %}
+
+    <div class="grid w-full gap-4 sm:grid-cols-2">
+      {% for poll in polls %}
+      <article class="card bg-base-100 border border-base-300 shadow">
+        <div class="card-body">
+          <div class="flex justify-between items-center gap-2">
+            <h2 class="card-title">{{ poll.clubRole }}</h2>
+            <span class="badge {% if poll.status == 'live' %}badge-success{% elif poll.status == 'closed' %}badge-neutral{% else %}badge-warning{% endif %}">
+              {{ 'Closed' if poll.status == 'closed' else ('Live' if poll.status == 'live' else 'Not started') }}
+            </span>
+          </div>
+          {% if allClosed %}
+          <p class="text-2xl font-semibold">{{ results[poll.clubRole].winner }}</p>
+          <p class="text-sm text-base-content/60">{% if results[poll.clubRole].tie %}Tied result{% elif results[poll.clubRole].winner == 'No votes cast' %}No election result{% else %}Elected{% endif %}</p>
+          {% else %}
+          <p class="text-sm text-base-content/60">Members vote for one candidate in this role.</p>
+          {% if poll.status == 'live' %}
+          <p class="text-sm font-medium">{{ progress[poll.clubRole].voted }} of {{ progress[poll.clubRole].eligible }} admitted members voted</p>
+          {% endif %}
+          {% endif %}
+          <div class="card-actions justify-end mt-2">
+            <a class="btn btn-secondary btn-sm" href="{{ url_for('view_poll', poll_id=poll.pollID) }}">{{ 'View results' if poll.status == 'closed' else 'Open vote' }}</a>
+            <button type="button" class="btn btn-ghost btn-sm copy-role-link" data-url="{{ request.host_url }}join?poll_id={{ poll.pollID }}">Copy link</button>
+          </div>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    <p id="copy-feedback" class="text-sm text-base-content/60" role="status"></p>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {}
+    const field = document.createElement('textarea');
+    field.value = text;
+    field.setAttribute('readonly', '');
+    field.style.position = 'fixed';
+    field.style.opacity = '0';
+    document.body.appendChild(field);
+    field.select();
+    let copied = false;
+    try { copied = document.execCommand('copy'); } catch {}
+    field.remove();
+    return copied;
+  }
+  document.querySelectorAll('.copy-role-link').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const ok = await copyText(button.dataset.url);
+      document.getElementById('copy-feedback').textContent = ok ? 'Link copied' : 'Copy failed';
+    });
+  });
+</script>
+{% endblock %}
