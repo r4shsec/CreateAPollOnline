@@ -25,7 +25,7 @@ with open('config.json') as f:
     config = json.load(f)
 
 DATABASE = config['DB_NAME']
-secret = os.environ.get('APP_SECRET')
+secret = config['APP_SECRET']
 
 MAX_OPTIONS = config['MAX_OPTIONS']
 MAX_QUESTION_LEN = config['MAX_QUESTION_LEN']
