@@ -19,6 +19,7 @@
           {% if poll.status == 'live' %}badge-success{% elif poll.status == 'closed' %}badge-neutral{% else %}badge-warning{% endif %}">
           {% if poll.status == 'live' %}Live{% elif poll.status == 'closed' %}Closed{% else %}Not started{% endif %}
         </span>
+        <span id="poll-timer" class="badge badge-warning {% if poll.status != 'live' or not poll.endsAt %}hidden{% endif %}" aria-live="polite"></span>
       </div>
 
       {% if error %}
@@ -128,6 +129,8 @@
       <a id="export-results" href="{{ url_for('export_poll_results', poll_id=poll.pollID) }}" class="btn btn-primary w-full">Export results (CSV)</a>
       {% endif %}
 
+      {% elif memberLimitReached %}
+      <div role="status" class="alert alert-warning"><span>This poll has reached its maximum of {{ poll.maxMembers }} members.</span></div>
       {% elif poll.isPrivate and not participantJoined and not votingClosed %}
       <form method="POST" action="{{ url_for('request_to_join', poll_id=poll.pollID) }}" class="card bg-base-100 border border-base-300 text-left">
         <div class="card-body gap-3">
@@ -208,6 +211,54 @@
       </form>
 
       <div id="live-results" class="hidden flex flex-col gap-2 text-left"></div>
+      {% endif %}
+
+      {% if not poll.isClubMode %}
+      {% if isOwner %}
+      <section id="next-question-section" class="card bg-base-100 border border-base-300 shadow-xl text-left {% if not votingClosed %}hidden{% endif %}">
+        <div class="card-body gap-3">
+          <h2 class="card-title text-lg">Start the next question</h2>
+          <p class="text-sm text-base-content/60">Create another round in this poll. Everyone already admitted stays included.</p>
+          <form id="next-question-form" method="POST" action="{{ url_for('create_next_question', poll_id=poll.pollID) }}" class="flex flex-col gap-3">
+            <input name="question" type="text" maxlength="200" placeholder="Enter the next question..." class="input input-bordered w-full" required />
+            <div id="next-question-options" class="flex flex-col gap-2">
+              {% for i in range(2) %}
+              <div class="flex gap-2" data-next-option-row>
+                <input name="options" type="text" maxlength="100" placeholder="Answer {{ i + 1 }}..." class="input input-bordered w-full" />
+                <button type="button" class="btn btn-error btn-outline" data-remove-next-option title="Remove answer" disabled><span class="material-symbols-outlined">delete</span></button>
+              </div>
+              {% endfor %}
+            </div>
+            <button type="button" id="add-next-question-option" class="btn btn-ghost btn-sm self-start">+ Add another answer</button>
+            <p id="next-question-error" role="alert" class="text-sm text-error hidden"></p>
+            <button type="submit" class="btn btn-primary w-full">Create and start next question</button>
+          </form>
+        </div>
+      </section>
+      {% elif participantApproved %}
+      <div id="next-question-wait" class="alert alert-info {% if not votingClosed %}hidden{% endif %}"><span>The poll is closed. The host can start another question here, and you’ll stay in the group.</span></div>
+      {% endif %}
+
+      {% if poll.rounds and (isOwner or participantApproved) %}
+      <section class="card bg-base-100 border border-base-300 text-left">
+        <div class="card-body gap-3">
+          <h2 class="card-title text-lg">Previous Polls</h2>
+          <div id="previous-polls-list" class="flex flex-col gap-3">
+          {% for previous_round in poll.rounds|reverse %}
+          <div class="previous-poll-item border-t border-base-300 pt-3 {% if loop.index0 >= 5 %}hidden{% endif %}">
+            <h3 class="font-semibold"><span class="text-base-content/60">Poll {{ poll.rounds|length - loop.index0 }}:</span> {{ previous_round.question }}</h3>
+            <ul class="mt-2 flex flex-col gap-1 text-sm text-base-content/70">
+              {% for option in previous_round.options.values() %}
+              <li class="flex justify-between gap-3"><span>{{ option.name }}</span><span>{{ option.votes }} votes</span></li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% endfor %}
+          </div>
+          <nav id="previous-polls-pagination" class="join self-center" aria-label="Previous polls pages"></nav>
+        </div>
+      </section>
+      {% endif %}
       {% endif %}
 
       {% if not isOwner and participantApproved %}
@@ -292,7 +343,32 @@
   const POLL_ID = "{{ poll.pollID }}";
   const IS_OWNER = {{ 'true' if isOwner else 'false' }};
   const pollIsClubMode = {{ 'true' if poll.isClubMode else 'false' }};
+  const INITIAL_ENDS_AT = {{ (poll.endsAt if poll.status == 'live' else none)|tojson }};
   let tally = JSON.parse('{{ tallyJson | safe }}' || "[]");
+  let countdownInterval = null;
+
+  function startCountdown(endsAt) {
+    const timer = document.getElementById("poll-timer");
+    if (!timer || !endsAt) {
+      timer?.classList.add("hidden");
+      return;
+    }
+    timer.classList.remove("hidden");
+    const update = () => {
+      const remaining = Math.max(0, Math.ceil(endsAt - Date.now() / 1000));
+      const minutes = Math.floor(remaining / 60);
+      const seconds = remaining % 60;
+      timer.textContent = `Time left ${minutes}:${String(seconds).padStart(2, "0")}`;
+      if (remaining === 0 && countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+      }
+    };
+    if (countdownInterval) clearInterval(countdownInterval);
+    update();
+    countdownInterval = setInterval(update, 1000);
+  }
+  if (INITIAL_ENDS_AT) startCountdown(INITIAL_ENDS_AT);
 
   // Join URL that the QR code and share modal point to
   const POLL_URL = `${window.location.origin}/join?poll_id=${POLL_ID}`;
@@ -312,7 +388,7 @@
 
   function renderMembers(data) {
     if (!memberList) return;
-    memberCount.textContent = data.count;
+    memberCount.textContent = data.limit ? `${data.count}/${data.limit}` : data.count;
     memberList.innerHTML = "";
     for (const m of data.members) {
       const li = document.createElement("li");
@@ -330,6 +406,14 @@
     count.textContent = data.members.length;
     panel?.classList.toggle("hidden", data.members.length === 0);
     list.replaceChildren();
+    if (data.members.length) {
+      const admitAll = document.createElement("button");
+      admitAll.type = "button";
+      admitAll.className = "btn btn-success btn-sm self-start";
+      admitAll.textContent = "Admit All";
+      admitAll.dataset.decision = "admit_all";
+      list.append(admitAll);
+    }
     for (const member of data.members) {
       const row = document.createElement("div");
       row.className = "flex items-center justify-between gap-3";
@@ -360,7 +444,7 @@
     button.disabled = true;
     socket.emit("member_decision", {
       pollID: POLL_ID,
-      userID: button.dataset.userId,
+      userID: button.dataset.userId || "",
       decision: button.dataset.decision,
     });
   });
@@ -471,6 +555,7 @@
 
   // ---------- Not-started -> live transition (participant view) ----------
   socket.on("poll_started", (d) => {
+    startCountdown(d.endsAt);
     if (IS_OWNER) return; // owners never get a vote form
 
     const badge = document.getElementById("status-badge");
@@ -491,6 +576,13 @@
     renderTally();
   });
   socket.on("poll_ended", (d) => {
+    if (countdownInterval) clearInterval(countdownInterval);
+    countdownInterval = null;
+    const timer = document.getElementById("poll-timer");
+    if (timer && d.autoEnded) timer.textContent = "Time is up";
+    else timer?.classList.add("hidden");
+    document.getElementById("next-question-section")?.classList.remove("hidden");
+    document.getElementById("next-question-wait")?.classList.remove("hidden");
     const badge = document.getElementById("status-badge");
     if (badge) {
       badge.className = "badge badge-neutral";
@@ -522,6 +614,7 @@
       renderTally();
     }
   });
+  socket.on("poll_round_started", () => window.setTimeout(() => window.location.reload(), 750));
 
   function renderClubOfficers(officers) {
     const container = document.getElementById("club-officers");
@@ -552,6 +645,88 @@
     box.className = `alert alert-${kind} alert-soft`;
     text.textContent = message;
   }
+
+  const nextQuestionForm = document.getElementById("next-question-form");
+  const nextQuestionOptions = document.getElementById("next-question-options");
+  const addNextOption = document.getElementById("add-next-question-option");
+  function refreshNextOptionRows() {
+    const rows = [...(nextQuestionOptions?.querySelectorAll("[data-next-option-row]") || [])];
+    rows.forEach((row, index) => {
+      row.querySelector("input").placeholder = `Answer ${index + 1}...`;
+      row.querySelector("[data-remove-next-option]").disabled = rows.length <= 2;
+    });
+    if (addNextOption) addNextOption.disabled = rows.length >= 10;
+  }
+  addNextOption?.addEventListener("click", () => {
+    if (!nextQuestionOptions || nextQuestionOptions.children.length >= 10) return;
+    const row = document.createElement("div");
+    row.className = "flex gap-2";
+    row.dataset.nextOptionRow = "";
+    const input = document.createElement("input");
+    input.name = "options";
+    input.type = "text";
+    input.maxLength = 100;
+    input.className = "input input-bordered w-full";
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "btn btn-error btn-outline";
+    remove.dataset.removeNextOption = "";
+    remove.title = "Remove answer";
+    remove.innerHTML = '<span class="material-symbols-outlined">delete</span>';
+    row.append(input, remove);
+    nextQuestionOptions.append(row);
+    refreshNextOptionRows();
+    input.focus();
+  });
+  nextQuestionOptions?.addEventListener("click", (event) => {
+    const remove = event.target.closest("[data-remove-next-option]");
+    if (remove && !remove.disabled) {
+      remove.closest("[data-next-option-row]").remove();
+      refreshNextOptionRows();
+    }
+  });
+  nextQuestionForm?.addEventListener("submit", (event) => {
+    const question = nextQuestionForm.elements.question.value.trim();
+    const answers = [...nextQuestionForm.querySelectorAll('input[name="options"]')]
+      .map((input) => input.value.trim()).filter(Boolean);
+    const error = document.getElementById("next-question-error");
+    const problem = !question ? "Enter the next question." :
+      new Set(answers.map((answer) => answer.toLowerCase())).size < 2
+        ? "Enter at least two different answers." : "";
+    if (problem) {
+      event.preventDefault();
+      error.textContent = problem;
+      error.classList.remove("hidden");
+    } else {
+      error.classList.add("hidden");
+    }
+  });
+  refreshNextOptionRows();
+
+  const previousPollItems = [...document.querySelectorAll(".previous-poll-item")];
+  const previousPollPagination = document.getElementById("previous-polls-pagination");
+  const PREVIOUS_POLLS_PER_PAGE = 5;
+  function renderPreviousPollsPage(page) {
+    const pageCount = Math.ceil(previousPollItems.length / PREVIOUS_POLLS_PER_PAGE);
+    const currentPage = Math.min(Math.max(page, 1), pageCount);
+    previousPollItems.forEach((item, index) => {
+      item.classList.toggle("hidden", Math.floor(index / PREVIOUS_POLLS_PER_PAGE) + 1 !== currentPage);
+    });
+    if (!previousPollPagination) return;
+    previousPollPagination.replaceChildren();
+    if (pageCount <= 1) return;
+    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber++) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = `join-item btn btn-sm ${pageNumber === currentPage ? "btn-active" : ""}`;
+      button.textContent = pageNumber;
+      button.setAttribute("aria-label", `Show previous polls page ${pageNumber}`);
+      button.setAttribute("aria-current", pageNumber === currentPage ? "page" : "false");
+      button.addEventListener("click", () => renderPreviousPollsPage(pageNumber));
+      previousPollPagination.append(button);
+    }
+  }
+  if (previousPollItems.length) renderPreviousPollsPage(1);
 
   async function copyText(text) {
     try {

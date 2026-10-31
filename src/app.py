@@ -76,7 +76,12 @@ class Flask_Database_Connector:
                 password TEXT NULL,
                 status TEXT NOT NULL DEFAULT 'draft',
                 clubID TEXT NULL,
-                clubRole TEXT NULL
+                clubRole TEXT NULL,
+                timeLimitSeconds INTEGER NOT NULL DEFAULT 0,
+                startedAt INTEGER NULL,
+                endsAt INTEGER NULL,
+                rounds TEXT NOT NULL DEFAULT '[]',
+                maxMembers INTEGER NULL
             )
         """)
         columns = {row[1] for row in conn.execute("PRAGMA table_info(pollDB)")}
@@ -84,6 +89,16 @@ class Flask_Database_Connector:
             conn.execute("ALTER TABLE pollDB ADD COLUMN clubID TEXT NULL")
         if 'clubRole' not in columns:
             conn.execute("ALTER TABLE pollDB ADD COLUMN clubRole TEXT NULL")
+        if 'timeLimitSeconds' not in columns:
+            conn.execute("ALTER TABLE pollDB ADD COLUMN timeLimitSeconds INTEGER NOT NULL DEFAULT 0")
+        if 'startedAt' not in columns:
+            conn.execute("ALTER TABLE pollDB ADD COLUMN startedAt INTEGER NULL")
+        if 'endsAt' not in columns:
+            conn.execute("ALTER TABLE pollDB ADD COLUMN endsAt INTEGER NULL")
+        if 'rounds' not in columns:
+            conn.execute("ALTER TABLE pollDB ADD COLUMN rounds TEXT NOT NULL DEFAULT '[]'")
+        if 'maxMembers' not in columns:
+            conn.execute("ALTER TABLE pollDB ADD COLUMN maxMembers INTEGER NULL")
         # The app now supports private polls only. Existing public polls move
         # behind the same password and approval flow on the next startup.
         conn.execute("UPDATE pollDB SET isPrivate = 1 WHERE isPrivate = 0")
@@ -92,15 +107,17 @@ class Flask_Database_Connector:
 
     def createPoll(self, createdByName, createdByID, pollID, question,
                    options, isPrivate, passwordRequired, password,
-                   clubID=None, clubRole=None):
+                   clubID=None, clubRole=None, timeLimitSeconds=0, maxMembers=None):
         conn = get_db()
         conn.execute("""
             INSERT INTO pollDB (
                 createdByName, createdByID, pollID, question,
-                options, isPrivate, passwordRequired, password, clubID, clubRole
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                options, isPrivate, passwordRequired, password, clubID, clubRole,
+                timeLimitSeconds, maxMembers
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (createdByName, createdByID, pollID, question,
-              options, isPrivate, passwordRequired, password, clubID, clubRole))
+              options, isPrivate, passwordRequired, password, clubID, clubRole,
+              timeLimitSeconds, maxMembers))
         conn.commit()
 
     def getPoll(self, pollID):
@@ -113,6 +130,7 @@ class Flask_Database_Connector:
         poll = dict(row)
         poll['options'] = json.loads(poll['options'])
         poll['participants'] = json.loads(poll['participants'] or '[]')
+        poll['rounds'] = json.loads(poll.get('rounds') or '[]')
         poll['userID'] = poll['createdByID']
         poll['requirePassword'] = False
         poll['isClubMode'] = poll.get('clubRole') == 'election'
@@ -142,6 +160,39 @@ class Flask_Database_Connector:
         )
         conn.commit()
 
+    def startPoll(self, pollID, startedAt, endsAt):
+        conn = get_db()
+        conn.execute("UPDATE pollDB SET status = 'live', startedAt = ?, endsAt = ? WHERE pollID = ?",
+                     (startedAt, endsAt, pollID))
+        conn.commit()
+
+    def createNextRound(self, pollID, question, options, startedAt, endsAt):
+        poll = self.getPoll(pollID)
+        if poll is None or poll.get('status') != 'closed':
+            return False
+        rounds = poll.get('rounds', [])
+        rounds.append({
+            'question': poll['question'],
+            'options': poll['options'],
+            'startedAt': poll.get('startedAt'),
+            'endsAt': poll.get('endsAt'),
+            'endedAt': int(time.time()),
+        })
+        conn = get_db()
+        cursor = conn.execute("""
+            UPDATE pollDB
+            SET question = ?, options = ?, rounds = ?, status = 'live', startedAt = ?, endsAt = ?
+            WHERE pollID = ? AND status = 'closed'
+        """, (question, json.dumps(options), json.dumps(rounds), startedAt, endsAt, pollID))
+        conn.commit()
+        return cursor.rowcount == 1
+
+    def getLiveTimedPolls(self):
+        conn = get_db()
+        return [dict(row) for row in conn.execute(
+            "SELECT pollID, endsAt FROM pollDB WHERE status = 'live' AND endsAt IS NOT NULL"
+        ).fetchall()]
+
     def setPollPassword(self, pollID, password_hash):
         conn = get_db()
         conn.execute("UPDATE pollDB SET password = ? WHERE pollID = ?", (password_hash, pollID))
@@ -151,7 +202,7 @@ class Flask_Database_Connector:
         """Record a participant; private polls keep new users pending."""
         conn = get_db()
         row = conn.execute(
-            "SELECT participants FROM pollDB WHERE pollID = ?", (pollID,)
+            "SELECT participants, maxMembers FROM pollDB WHERE pollID = ?", (pollID,)
         ).fetchone()
         if row is None:
             return False
@@ -166,6 +217,9 @@ class Flask_Database_Connector:
                 )
                 conn.commit()
             return existing.get('status', 'approved') == 'approved'
+        current_count = sum(1 for p in participants if p.get('status') not in ('cancelled', 'denied'))
+        if row['maxMembers'] is not None and current_count >= row['maxMembers']:
+            return None
         participants.append({'userID': userID, 'username': username,
                              'status': 'pending' if require_approval else 'approved'})
         conn.execute(
@@ -287,15 +341,28 @@ room_members = {}
 
 def members_payload(pollID):
     poll = db.getPoll(pollID)
+    participants = (poll or {}).get('participants', [])
     members = [
         {'userID': p.get('userID'), 'username': p.get('username', 'Member')}
-        for p in (poll or {}).get('participants', [])
+        for p in participants
         if p.get('status', 'approved') == 'approved'
     ]
     return {
-        'count': len(members),
+        'count': sum(1 for p in participants if p.get('status') not in ('cancelled', 'denied')),
+        'limit': (poll or {}).get('maxMembers'),
         'members': members,
     }
+
+
+def poll_at_member_limit(poll):
+    maximum = poll.get('maxMembers')
+    if maximum is None:
+        return False
+    active_count = sum(
+        1 for participant in poll.get('participants', [])
+        if participant.get('status') not in ('cancelled', 'denied')
+    )
+    return active_count >= maximum
 
 
 def voting_power_members_payload(poll):
@@ -311,6 +378,55 @@ def voting_power_members_payload(poll):
             if p.get('status', 'approved') == 'approved'
         ]
     }
+
+
+timer_tasks = {}
+
+
+def schedule_poll_timeout(poll_id, ends_at):
+    if not ends_at or timer_tasks.get(poll_id) == ends_at:
+        return
+    timer_tasks[poll_id] = ends_at
+    socketio.start_background_task(close_poll_at_deadline, poll_id, ends_at)
+
+
+def close_poll_at_deadline(poll_id, expected_ends_at):
+    try:
+        delay = max(0, expected_ends_at - int(time.time()))
+        if delay:
+            socketio.sleep(delay)
+        with app.app_context():
+            poll = db.getPoll(poll_id)
+            if (poll and poll.get('status') == 'live' and
+                    poll.get('endsAt') == expected_ends_at and
+                    int(time.time()) >= expected_ends_at):
+                close_live_poll(poll_id, auto_ended=True)
+    finally:
+        if timer_tasks.get(poll_id) == expected_ends_at:
+            timer_tasks.pop(poll_id, None)
+
+
+def close_live_poll(poll_id, auto_ended=False):
+    poll = db.getPoll(poll_id)
+    if poll is None or poll.get('status') != 'live':
+        return False
+    for participant in poll['participants']:
+        if participant.get('status') == 'pending':
+            socketio.emit('member_status', {
+                'userID': participant.get('userID'), 'status': 'cancelled',
+                'message': 'Voting has ended before your request was admitted.'
+            }, to=f"pending_{poll_id}_{participant.get('userID')}")
+            db.set_participant_status(poll_id, participant.get('userID'), 'cancelled')
+    db.setPollStatus(poll_id, 'closed')
+    poll = db.getPoll(poll_id)
+    ended_payload = {
+        'tally': Flask_Database_Connector.getTally(poll['options']),
+        'autoEnded': auto_ended,
+    }
+    if poll.get('isClubMode'):
+        ended_payload['officers'] = club_officers_by_vote_count(poll)
+    socketio.emit('poll_ended', ended_payload, to=f'poll_{poll_id}')
+    return True
 
 
 @app.before_request
@@ -361,6 +477,29 @@ def create_poll():
 
     club_mode = request.form.get('clubMode') == 'on'
     error = None
+    timer_enabled = request.form.get('timerEnabled') == 'on'
+    member_limit_enabled = request.form.get('memberLimitEnabled') == 'on'
+    max_members = None
+    if member_limit_enabled:
+        try:
+            max_members = int(request.form.get('maxMembers', ''))
+            if not 1 <= max_members <= 2**63 - 1:
+                raise ValueError()
+        except ValueError:
+            max_members = None
+            error = 'Maximum members must be a whole number of at least 1.'
+    time_limit_seconds = 0
+    if timer_enabled:
+        try:
+            time_limit_minutes = int(request.form.get('timeLimitMinutes', ''))
+            if not 1 <= time_limit_minutes <= 1440:
+                raise ValueError()
+            time_limit_seconds = time_limit_minutes * 60
+        except ValueError:
+            time_limit_minutes = 1
+            error = 'Timer must be between 1 minute and 24 hours.'
+    else:
+        time_limit_minutes = ''
     if not question or len(question) > MAX_QUESTION_LEN:
         error = f"Question is required (max {MAX_QUESTION_LEN} characters)."
     elif club_mode and len(answers) != 4:
@@ -385,7 +524,11 @@ def create_poll():
                                question=question, options=answers,
                                isPrivate=is_private,
                                requirePassword=password_required,
-                               clubMode=club_mode), 400
+                               clubMode=club_mode,
+                               timerEnabled=timer_enabled,
+                               timeLimitMinutes=time_limit_minutes,
+                               memberLimitEnabled=member_limit_enabled,
+                               maxMembers=request.form.get('maxMembers', '')), 400
 
     roles = ['election'] if club_mode else [None]
     first_poll_id = None
@@ -408,6 +551,7 @@ def create_poll():
             decoded.get('username'), decoded.get('userID'), poll_id,
             poll_question, json.dumps(options), is_private,
             password_required, password_hash, club_id, role,
+            time_limit_seconds, max_members,
         )
     return redirect(url_for('view_poll', poll_id=first_poll_id))
 
@@ -481,9 +625,14 @@ def start_club(club_id):
         abort(400, description='This club vote has already closed.')
     for poll in polls:
         if poll['status'] == 'draft':
-            db.setPollStatus(poll['pollID'], 'live')
+            started_at = int(time.time())
+            ends_at = started_at + poll['timeLimitSeconds'] if poll['timeLimitSeconds'] else None
+            db.startPoll(poll['pollID'], started_at, ends_at)
+            if ends_at:
+                schedule_poll_timeout(poll['pollID'], ends_at)
             socketio.emit('poll_started', {
-                'tally': Flask_Database_Connector.getTally(poll['options'])
+                'tally': Flask_Database_Connector.getTally(poll['options']),
+                'endsAt': ends_at,
             }, to=f"poll_{poll['pollID']}")
     return redirect(url_for('view_club', club_id=club_id))
 
@@ -552,8 +701,10 @@ def request_to_join(poll_id):
                                tallyJson='[]',
                                username=decoded.get('username'), joinedName=member_name,
                                error='Incorrect password.')
-    db.add_participant(poll_id, decoded['userID'], member_name,
-                                  require_approval=bool(poll.get('isPrivate')))
+    added = db.add_participant(poll_id, decoded['userID'], member_name,
+                               require_approval=bool(poll.get('isPrivate')))
+    if added is None:
+        return redirect(url_for('view_poll', poll_id=poll_id))
     if poll.get('isPrivate'):
         pending = [p for p in db.getPoll(poll_id)['participants'] if p.get('status') == 'pending']
         socketio.emit('join_requests', {'members': pending}, to=f'poll_{poll_id}')
@@ -570,6 +721,8 @@ def view_poll(poll_id):
     poll = db.getPoll(poll_id)
     if poll is None:
         abort(404)
+    if poll.get('status') == 'live' and poll.get('endsAt'):
+        schedule_poll_timeout(poll_id, poll['endsAt'])
 
     user_id = decoded.get('userID')
     username = decoded.get('username')
@@ -577,12 +730,24 @@ def view_poll(poll_id):
 
     # Record participant presence (persisted), but owners don't count themselves
     participant = next((p for p in poll.get('participants', []) if p.get('userID') == user_id), None)
-    participant_joined = bool(is_owner or participant or not poll.get('isPrivate'))
-    participant_approved = bool(is_owner or not poll.get('isPrivate') or
-                                (participant and participant.get('status') == 'approved'))
-    if not is_owner:
-        if not poll.get('isPrivate'):
-            participant_approved = db.add_participant(poll_id, user_id, username)
+    member_limit_reached = bool(
+        not is_owner and not participant and poll_at_member_limit(poll)
+    )
+    if (not is_owner and not participant and not poll.get('isPrivate') and
+            poll.get('status') != 'closed' and not member_limit_reached):
+        participant_approved = db.add_participant(poll_id, user_id, username)
+        if participant_approved is None:
+            member_limit_reached = True
+        else:
+            poll = db.getPoll(poll_id)
+            participant = next((p for p in poll.get('participants', [])
+                                if p.get('userID') == user_id), None)
+    participant_joined = bool(is_owner or participant or
+                              (not poll.get('isPrivate') and not member_limit_reached))
+    participant_approved = bool(
+        is_owner or (participant and participant.get('status') == 'approved') or
+        (not poll.get('isPrivate') and not member_limit_reached)
+    )
 
     tally = Flask_Database_Connector.getTally(poll['options']) if participant_approved else []
     club_results = (club_officers_by_vote_count(poll)
@@ -598,6 +763,7 @@ def view_poll(poll_id):
         username=username,
         participantApproved=participant_approved,
         participantJoined=participant_joined,
+        memberLimitReached=member_limit_reached,
     )
 
 
@@ -612,12 +778,18 @@ def start_poll(poll_id):
         abort(404)
     if poll.get('userID') != decoded.get('userID'):
         abort(403)
-    db.setPollStatus(poll_id, 'live')
+    if poll.get('status') != 'draft':
+        abort(400, description='This poll has already started.')
+    started_at = int(time.time())
+    ends_at = started_at + poll['timeLimitSeconds'] if poll['timeLimitSeconds'] else None
+    db.startPoll(poll_id, started_at, ends_at)
+    if ends_at:
+        schedule_poll_timeout(poll_id, ends_at)
 
     poll = db.getPoll(poll_id)  # fresh copy
     socketio.emit(
         'poll_started',
-        {'tally': Flask_Database_Connector.getTally(poll['options'])},
+        {'tally': Flask_Database_Connector.getTally(poll['options']), 'endsAt': ends_at},
         to=f'poll_{poll_id}',
     )
     return redirect(url_for('view_poll', poll_id=poll_id))
@@ -634,21 +806,51 @@ def end_poll(poll_id):
     if poll.get('isClubMode'):
         if not any(option.get('votes', 0) for option in poll['options'].values()):
             abort(400, description='At least one member must vote before the election can end.')
-    for participant in poll['participants']:
-        if participant.get('status') == 'pending':
-            socketio.emit('member_status', {
-                'userID': participant.get('userID'), 'status': 'cancelled',
-                'message': 'Voting has ended before your request was admitted.'
-            }, to=f"pending_{poll_id}_{participant.get('userID')}")
-            db.set_participant_status(poll_id, participant.get('userID'), 'cancelled')
-    db.setPollStatus(poll_id, 'closed')
+    close_live_poll(poll_id)
+    return redirect(url_for('view_poll', poll_id=poll_id))
+
+
+@app.route('/poll/<poll_id>/next-question', methods=['POST'])
+def create_next_question(poll_id):
+    decoded = Flask_JWT_Manager.validate_JWT(request.cookies.get('token'))
     poll = db.getPoll(poll_id)
-    ended_payload = {
-        'tally': Flask_Database_Connector.getTally(poll['options']),
+    if decoded.get('error') or poll is None or poll.get('userID') != decoded.get('userID'):
+        abort(403)
+    if poll.get('status') != 'closed' or poll.get('isClubMode'):
+        abort(400, description='A follow-up question can only be created after a standard poll closes.')
+
+    question = request.form.get('question', '').strip()
+    answers, seen = [], set()
+    for raw in request.form.getlist('options'):
+        answer = raw.strip()
+        if answer and answer.lower() not in seen:
+            seen.add(answer.lower())
+            answers.append(answer)
+    if not question or len(question) > MAX_QUESTION_LEN:
+        abort(400, description=f'Question is required (max {MAX_QUESTION_LEN} characters).')
+    if not 2 <= len(answers) <= MAX_OPTIONS:
+        abort(400, description=f'Provide between 2 and {MAX_OPTIONS} different answers.')
+    if any(len(answer) > MAX_OPTION_LEN for answer in answers):
+        abort(400, description=f'Answers can be at most {MAX_OPTION_LEN} characters.')
+
+    options = {
+        f'option{i}': {
+            'name': answer, 'votes': 0, 'votesBy': [],
+            'voteID': secrets.token_urlsafe(8),
+        }
+        for i, answer in enumerate(answers, start=1)
     }
-    if poll.get('isClubMode'):
-        ended_payload['officers'] = club_officers_by_vote_count(poll)
-    socketio.emit('poll_ended', ended_payload, to=f'poll_{poll_id}')
+    started_at = int(time.time())
+    ends_at = started_at + poll['timeLimitSeconds'] if poll['timeLimitSeconds'] else None
+    if not db.createNextRound(poll_id, question, options, started_at, ends_at):
+        abort(409, description='Another question has already been started.')
+    if ends_at:
+        schedule_poll_timeout(poll_id, ends_at)
+    socketio.emit('poll_round_started', {
+        'question': question, 'endsAt': ends_at,
+        'tally': Flask_Database_Connector.getTally(options),
+        'roundNumber': len(poll.get('rounds', [])) + 2,
+    }, to=f'poll_{poll_id}')
     return redirect(url_for('view_poll', poll_id=poll_id))
 
 
@@ -663,21 +865,22 @@ def export_poll_results(poll_id):
 
     output = io.StringIO(newline='')
     writer = csv.writer(output)
-    question = str(poll.get('question', ''))
-    if question.startswith(('=', '+', '-', '@', '\t', '\r')):
-        question = "'" + question
-    writer.writerow(['Poll', question])
-    writer.writerow(['Status', 'Closed'])
-    writer.writerow(['Option', 'Weighted votes', 'Ballots'])
-    for option in poll['options'].values():
-        name = str(option.get('name', ''))
-        if name.startswith(('=', '+', '-', '@', '\t', '\r')):
-            name = "'" + name
-        writer.writerow([
-            name,
-            option.get('votes', 0),
-            len(option.get('votesBy', [])),
-        ])
+    writer.writerow(['Round', 'Question', 'Option', 'Weighted votes', 'Ballots'])
+    all_rounds = [*poll.get('rounds', []), {
+        'question': poll['question'], 'options': poll['options'],
+    }]
+    for round_number, poll_round in enumerate(all_rounds, start=1):
+        question = str(poll_round.get('question', ''))
+        if question.lstrip().startswith(('=', '+', '-', '@', '\t', '\r')):
+            question = "'" + question
+        for option in poll_round.get('options', {}).values():
+            name = str(option.get('name', ''))
+            if name.lstrip().startswith(('=', '+', '-', '@', '\t', '\r')):
+                name = "'" + name
+            writer.writerow([
+                round_number, question, name, option.get('votes', 0),
+                len(option.get('votesBy', [])),
+            ])
 
     response = make_response('\ufeff' + output.getvalue())
     response.headers['Content-Type'] = 'text/csv; charset=utf-8'
@@ -768,6 +971,21 @@ def handle_join_poll(data):
         emit('socket_error', {'message': 'Poll not found.'})
         return
 
+    existing_participant = next((p for p in poll.get('participants', [])
+                                 if p.get('userID') == decoded['userID']), None)
+    if not poll.get('isPrivate') and poll.get('status') != 'closed' and not existing_participant:
+        added = db.add_participant(pollID, decoded['userID'], decoded['username'])
+        if added is None:
+            emit('socket_error', {'message': 'This poll has reached its maximum number of members.'})
+            return
+        poll = db.getPoll(pollID)
+        existing_participant = next((p for p in poll.get('participants', [])
+                                     if p.get('userID') == decoded['userID']), None)
+    elif (not poll.get('isPrivate') and not existing_participant and
+          poll_at_member_limit(poll)):
+        emit('socket_error', {'message': 'This poll has reached its maximum number of members.'})
+        return
+
     room = f'poll_{pollID}'
     userID = decoded['userID']
     username = decoded['username']
@@ -816,21 +1034,32 @@ def handle_member_decision(data):
     if poll.get('status') == 'closed':
         emit('socket_error', {'message': 'This poll is already closed.'})
         return
-    if decision not in ('admit', 'deny'):
+    if decision not in ('admit', 'deny', 'admit_all'):
         emit('socket_error', {'message': 'Invalid member decision.'})
         return
-    pending = next((p for p in poll.get('participants', [])
-                    if p.get('userID') == userID and p.get('status') == 'pending'), None)
-    if not pending:
+    if decision == 'admit_all':
+        pending_members = [p for p in poll.get('participants', []) if p.get('status') == 'pending']
+        for member in pending_members:
+            db.set_participant_status(pollID, member.get('userID'), 'approved')
+            socketio.emit('member_status', {
+                'userID': member.get('userID'), 'status': 'approved', 'message': ''
+            }, to=f"pending_{pollID}_{member.get('userID')}")
+    else:
+        pending = next((p for p in poll.get('participants', [])
+                        if p.get('userID') == userID and p.get('status') == 'pending'), None)
+        if not pending:
+            emit('socket_error', {'message': 'That join request is no longer pending.'})
+            return
+        status = 'approved' if decision == 'admit' else 'cancelled'
+        db.set_participant_status(pollID, userID, status)
+        socketio.emit('member_status', {
+            'userID': userID, 'status': status,
+            'message': 'The host denied your join request.' if status == 'cancelled' else ''
+        }, to=f'pending_{pollID}_{userID}')
+
+    if decision == 'admit_all' and not pending_members:
         emit('socket_error', {'message': 'That join request is no longer pending.'})
         return
-    status = 'approved' if decision == 'admit' else 'cancelled'
-    db.set_participant_status(pollID, userID, status)
-    socketio.emit('member_status', {
-        'userID': userID, 'status': status,
-        'message': 'The host denied your join request.' if status == 'cancelled' else ''
-    },
-                  to=f'pending_{pollID}_{userID}')
     updated = db.getPoll(pollID)
     socketio.emit('join_requests', {
         'members': [p for p in updated['participants'] if p.get('status') == 'pending']
@@ -869,6 +1098,10 @@ def handle_vote(data):
         message = 'Voting is closed.' if poll.get('status') == 'closed' else 'Vote has not started yet.'
         emit('vote_result', {'ok': False, 'message': message})
         return
+    if poll.get('endsAt') and int(time.time()) >= poll['endsAt']:
+        close_live_poll(pollID, auto_ended=True)
+        emit('vote_result', {'ok': False, 'message': 'Time is up. Voting is closed.'})
+        return
     if poll.get('userID') == decoded.get('userID'):
         emit('vote_result', {'ok': False, 'message': "You can't vote on your own poll."})
         return
@@ -876,6 +1109,14 @@ def handle_vote(data):
         emit('vote_result', {'ok': False, 'message': 'Wait for the host to approve your request to join.'})
         return
     participant = next((p for p in poll.get('participants', []) if p.get('userID') == decoded.get('userID')), None)
+    if not poll.get('isPrivate') and not participant:
+        added = db.add_participant(pollID, decoded['userID'], decoded['username'])
+        if added is None:
+            emit('vote_result', {'ok': False, 'message': 'This poll has reached its maximum number of members.'})
+            return
+        poll = db.getPoll(pollID)
+        participant = next((p for p in poll.get('participants', [])
+                            if p.get('userID') == decoded.get('userID')), None)
     voter_name = participant.get('username', decoded['username']) if participant else decoded['username']
     weight = float(participant.get('votingPower', 1)) if poll.get('isPrivate') and participant else 1
     if poll.get('isPrivate') and participant and participant.get('votingPowerMode') == 'percent':
@@ -887,6 +1128,11 @@ def handle_vote(data):
 
     emit('vote_result', {'ok': True, 'message': 'Vote counted!'})
     socketio.emit('tally_update', {'tally': tally}, to=f'poll_{pollID}')
+
+
+with app.app_context():
+    for timed_poll in db.getLiveTimedPolls():
+        schedule_poll_timeout(timed_poll['pollID'], timed_poll['endsAt'])
 
 
 if __name__ == '__main__':

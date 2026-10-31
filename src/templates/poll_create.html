@@ -9,6 +9,10 @@
             <form id="create-poll-form" action="/create" method="POST" class="flex flex-col gap-4" novalidate>
                 <h1 class="card-title text-2xl justify-center">Create a Poll</h1>
 
+                {% if error %}
+                <div role="alert" class="alert alert-error"><span>{{ error }}</span></div>
+                {% endif %}
+
                 <div role="alert" id="form-error" class="alert alert-error hidden">
                     <span id="form-error-text"></span>
                 </div>
@@ -68,6 +72,26 @@
                     {% if not isPrivate %}hidden{% endif %}
                 />
 
+                <label class="label cursor-pointer justify-between">
+                    <span class="label-text">Set a time limit</span>
+                    <input type="checkbox" name="timerEnabled" id="timer-enabled" class="toggle toggle-primary" {% if timerEnabled %}checked{% endif %} />
+                </label>
+                <div id="timer-settings" class="{% if not timerEnabled %}hidden{% endif %} text-left">
+                    <label for="time-limit-minutes" class="label"><span class="label-text">Voting time (minutes)</span></label>
+                    <input id="time-limit-minutes" name="timeLimitMinutes" type="number" min="1" max="1440" step="1" value="{{ timeLimitMinutes or '' }}" placeholder="1" class="input input-bordered w-full" {% if not timerEnabled %}disabled{% endif %} {% if timerEnabled %}required{% endif %} />
+                    <p class="mt-1 text-xs text-base-content/60">At least 1 minute; up to 24 hours. Voting closes automatically when time runs out.</p>
+                </div>
+
+                <label class="label cursor-pointer justify-between">
+                    <span class="label-text">Set a maximum number of members</span>
+                    <input type="checkbox" name="memberLimitEnabled" id="member-limit-enabled" class="toggle toggle-primary" {% if memberLimitEnabled %}checked{% endif %} />
+                </label>
+                <div id="member-limit-settings" class="{% if not memberLimitEnabled %}hidden{% endif %} text-left">
+                    <label for="max-members" class="label"><span class="label-text">Maximum members</span></label>
+                    <input id="max-members" name="maxMembers" type="number" min="1" max="9007199254740991" step="1" value="{{ maxMembers or '' }}" placeholder="e.g. 20" class="input input-bordered w-full" {% if not memberLimitEnabled %}disabled{% endif %} {% if memberLimitEnabled %}required{% endif %} />
+                    <p class="mt-1 text-xs text-base-content/60">The host is not counted. Pending join requests count toward the limit. Turn this off for unlimited members.</p>
+                </div>
+
                 <button type="submit" class="btn btn-primary w-full mt-2">Create</button>
             </form>
         </div>
@@ -97,6 +121,12 @@
     const passwordInput = document.getElementById('password-input');
     const clubMode = document.getElementById('club-mode');
     const privatePoll = document.getElementById('private-poll');
+    const timerEnabled = document.getElementById('timer-enabled');
+    const timerSettings = document.getElementById('timer-settings');
+    const timeLimitMinutes = document.getElementById('time-limit-minutes');
+    const memberLimitEnabled = document.getElementById('member-limit-enabled');
+    const memberLimitSettings = document.getElementById('member-limit-settings');
+    const maxMembersInput = document.getElementById('max-members');
     const questionInput = document.getElementById('poll_name');
     const errorBox = document.getElementById('form-error');
     const errorText = document.getElementById('form-error-text');
@@ -160,6 +190,20 @@
     clubMode.addEventListener('change', updatePollSettings);
     privatePoll.addEventListener('change', updatePollSettings);
 
+    function updateTimerSettings() {
+        timerSettings.classList.toggle('hidden', !timerEnabled.checked);
+        timeLimitMinutes.disabled = !timerEnabled.checked;
+        timeLimitMinutes.required = timerEnabled.checked;
+    }
+    timerEnabled.addEventListener('change', updateTimerSettings);
+
+    function updateMemberLimitSettings() {
+        memberLimitSettings.classList.toggle('hidden', !memberLimitEnabled.checked);
+        maxMembersInput.disabled = !memberLimitEnabled.checked;
+        maxMembersInput.required = memberLimitEnabled.checked;
+    }
+    memberLimitEnabled.addEventListener('change', updateMemberLimitSettings);
+
     createForm.addEventListener('submit', (e) => {
         clearError();
 
@@ -202,6 +246,26 @@
             return;
         }
 
+        if (timerEnabled.checked) {
+            const minutes = Number(timeLimitMinutes.value);
+            if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+                e.preventDefault();
+                showError('Set a timer between 1 minute and 24 hours.');
+                timeLimitMinutes.focus();
+                return;
+            }
+        }
+
+        if (memberLimitEnabled.checked) {
+            const limit = Number(maxMembersInput.value);
+            if (!Number.isSafeInteger(limit) || limit < 1) {
+                e.preventDefault();
+                showError('Set a maximum member count of at least 1, or turn the limit off.');
+                maxMembersInput.focus();
+                return;
+            }
+        }
+
         // Drop empty rows so they are not submitted
         optionRows().forEach(row => {
             if (row.querySelector('input').value.trim() === '') row.remove();
@@ -220,6 +284,8 @@
 
     // Sync placeholders, password visibility, and row count on initial load
     updatePollSettings();
+    updateTimerSettings();
+    updateMemberLimitSettings();
     refresh();
 </script>
 {% endblock %}

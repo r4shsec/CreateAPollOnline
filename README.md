@@ -1,84 +1,53 @@
 # Create A Poll Online
 
-A Flask app for creating polls, inviting people to vote, and watching results update live. Polls can be public or private. Private polls support a join password, host approval, and per-member voting power.
+A minimal Flask app for creating polls with friends, making important corporate decisions, and picking club members. Fully **self-hosted, open-sourced, and no account required**.
 
-![Create A Poll logo](src/static/images/logo.svg)
+<p align="center">
+  <img src="src/static/images/logo.svg" alt="Logo" width="500">
+</p>
+
+---
+
 
 ## Features
 
-- Create public polls or password-protected private polls.
-- Let a host approve or deny private poll join requests.
-- Set approved members' voting power as whole votes or a percentage.
-- Run club elections with four candidate names.
-- Export closed poll results to CSV.
+#### 1. Club Mode
 
-## Install and run with Gunicorn
+> **Club Mode** is a feature to automatically know who's in charged of a club based on the amount of vote each candidate receives. The highest votes would be president, follow by the second highest for vice president, and etc.
 
-Gunicorn is for Linux and macOS. The commands below assume Python 3.12 or newer and that you run them from the repository root unless noted.
+![Club Mode](src/img/club_mode.png)
 
-1. Create and activate a virtual environment, then install the app dependencies:
+#### 2. Display QR Code
 
-   ```sh
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r src/requirements.txt
-   ```
+> You don't have to type the code manually. Just display the QR code, and allow members to join.
 
-2. Create the app configuration file:
+![QR Code](src/img/qr_code.png)
 
-   ```sh
-   cp config.json.example src/config.json
-   ```
+#### 3. Private Polls
 
-3. Set a unique secret and start the app from the `src` directory:
+> Polls are usually public for everyone to view. However, private polls require a password and for the "host" to admit or deny users. The "host" could also set the **voting power** of each member which is important for strategic corporate meetings.
 
-   ```sh
-   cd src
-   export APP_SECRET="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')"
-   gunicorn --no-control-socket --worker-class gthread --workers 1 --threads 100 --bind 0.0.0.0:5000 app:app
-   ```
+![QR Code](src/img/private_polls.png)
 
-4. Open [http://localhost:5000](http://localhost:5000).
+#### 4. Timed Polls
 
-Keep the Gunicorn process running to serve the app.
+> You could set a time to conduct the polls (in minutes) before the poll ends.
 
-## Run locally on Windows
+![QR Code](src/img/timed_polls.png)
 
-Gunicorn does not run natively on Windows. Use Flask-SocketIO's development server for local development:
+#### 5. Export Results
 
-```powershell
-py -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r src\requirements.txt
-Copy-Item config.json.example src\config.json
-Set-Location src
-$env:APP_SECRET = py -c "import secrets; print(secrets.token_urlsafe(48))"
-py app.py
-```
+> Since this doesn't require an account, you could export polls in a **.csv** format.
 
-Open [http://localhost:5000](http://localhost:5000). The local SQLite database defaults to `src/createapoll.db`.
+![Export Polls](src/img/export_polls.png)
 
-## Configuration
+#### 6. Set Maximum Members
 
-The app reads `config.json` from its working directory. `config.json.example` contains the application limits and default database name. Keep the real `config.json` private; it is ignored by Git.
+> You could set the **maximum members** for how many users you want to join the poll.
 
-| Setting | Default | Description |
-| --- | --- | --- |
-| `APP_SECRET` environment variable | `APP_SECRET` in `config.json` | Secret used to sign session tokens. Set a unique random value for every deployment. |
-| `DB_NAME` environment variable | `DB_NAME` in `config.json` | SQLite database file path. The parent directory must exist and be writable by the app user. |
-| `MAX_OPTIONS` | `10` | Maximum number of answers in a poll. |
-| `MAX_QUESTION_LEN` | `200` | Maximum poll question length. |
-| `MAX_OPTION_LEN` | `100` | Maximum answer length. |
+![Export Polls](src/img/max_members.png)
 
-## Project layout
+---
 
-```text
-.
-├── config.json.example
-├── README.md
-└── src/
-    ├── app.py
-    ├── requirements.txt
-    ├── static/
-    └── templates/
-```
+## Usage:
+
