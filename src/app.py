@@ -803,9 +803,6 @@ def end_poll(poll_id):
         abort(403)
     if poll.get('status') != 'live':
         abort(400)
-    if poll.get('isClubMode'):
-        if not any(option.get('votes', 0) for option in poll['options'].values()):
-            abort(400, description='At least one member must vote before the election can end.')
     close_live_poll(poll_id)
     return redirect(url_for('view_poll', poll_id=poll_id))
 
@@ -1139,5 +1136,5 @@ if __name__ == '__main__':
     socketio.run(
         app, 
         host='0.0.0.0', 
-        port=5000
+        port=config['APP_PORT']
     )
